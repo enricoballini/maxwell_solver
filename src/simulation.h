@@ -4,7 +4,6 @@
 #ifndef SIMULATION_H
 #define SIMULATION_H
 #include <math.h>
-#include <mex.h>
 #include <stdio.h>
 #include "gpu.h"
 #include <iostream>
@@ -20,10 +19,20 @@ constexpr double c = 299792458;
 constexpr double mu0 = 4 * M_PI * 1e-7;
 constexpr double eps0 = 1 / c / c / mu0;
 constexpr double sigma_max = 5.8e7;
+constexpr size_t block_size = 32;
 
-class simulation
+class simFDTD
 {
 public:
+    //////Initialize simulation
+    simFDTD()
+    {
+        init_1D = 0;
+        init_mu = 0;
+        cudaStreamCreate(&stream);
+    }
+
+
     ///////set coaxial paramters
     void createMu(real *mu_x, real *mu_y, real *mu_z)
     {
@@ -59,16 +68,7 @@ public:
         cudaFreeHost(Cz);
     }
 
-    //////Initialize simulation
-    simulation()
-    {
-        init_impulse = 0;
-        init_1D = 0;
-        init_mu = 0;
-        init_design = 0;
-        block_size = 32;
-        cudaStreamCreate(&stream);
-    }
+
     ////////////////////set constant parameters
     void setConst(real *freqRes, int *TimeDim)
     {
@@ -103,8 +103,6 @@ public:
         k0 = width;
         k1 = Kmax - width - 1;
 
-        DesignY = 100;
-        DesignZ = 100;
         width_coax0 = TimeDim[5];
         width_coax1 = TimeDim[6];
         depth_coax0 = TimeDim[7];
@@ -166,7 +164,7 @@ public:
         cudaMalloc(&b_H_1D, 2 * pml_size * real_size);
         cudaMalloc(&c_H_1D, 2 * pml_size * real_size);
         cudaMalloc(&b_E_1D, 2 * pml_size * real_size);
-        +cudaMalloc(&c_E_1D, 2 * pml_size * real_size);
+        cudaMalloc(&c_E_1D, 2 * pml_size * real_size);
         cudaMemcpyAsync(b_H_1D, b_Hx_1, 2 * pml_size * real_size, cudaMemcpyHostToDevice, stream);
         cudaMemcpyAsync(c_H_1D, c_Hx_1, 2 * pml_size * real_size, cudaMemcpyHostToDevice, stream);
         cudaMemcpyAsync(b_E_1D, b_Ex_1, 2 * pml_size * real_size, cudaMemcpyHostToDevice, stream);
@@ -230,37 +228,6 @@ public:
         cudaFree(c_E_1D);
     }
 
-    void computeG_ant(const real *E1_ant, const real *E1_ant_AD, double *G1_ant, size_t size, size_t max_TimeSteps)
-    {
-#pragma omp parallel for
-        for (size_t ti = 0; ti < size; ++ti)
-        {
-            double sum = 0.0;
-            for (size_t i = 0; i < max_TimeSteps - 1; ++i)
-            {
-                size_t index = (max_TimeSteps - i - 1) * size + ti;
-                sum += static_cast<double>(E1_ant[index]) * (static_cast<double>(E1_ant_AD[ti + i * size]) + static_cast<double>(E1_ant_AD[ti + (i + 1) * size])) / 2.0;
-            }
-            G1_ant[ti] = sum;
-        }
-        if (NumML > 1)
-        {
-            for (size_t ind = 1; ind < NumML; ind++)
-            {
-#pragma omp parallel for
-                for (size_t ti = 0; ti < size; ++ti)
-                {
-                    double sum = 0.0;
-                    for (size_t i = 0; i < max_TimeSteps - 1; ++i)
-                    {
-                        size_t index = (max_TimeSteps - i - 1) * size + ti;
-                        sum += static_cast<double>(E1_ant[index + ind * max_TimeSteps * size]) * (static_cast<double>(E1_ant_AD[ti + i * size + ind * max_TimeSteps * size]) + static_cast<double>(E1_ant_AD[ti + (i + 1) * size + ind * max_TimeSteps * size])) / 2.0;
-                    }
-                    G1_ant[ti + ind * size] = sum;
-                }
-            }
-        }
-    }
     void updateMaterial(int *flag, real *values)
     {
         if (flag[0] == 1)
@@ -350,7 +317,7 @@ public:
         int sourcemode = time[2];
         if (mode == 1) ////adjoint
         {
-            coaxUpdateGPU<<<1, 1, 0, stream>>>(PortSignal_GPU, Ex_GPU, Ey_GPU, Hx_GPU, Hy_GPU, source_adjoint_GPU, i, coax_ind[0], Imax, Jmax, delX, Z_c, depth_coax0, depth_coax1, width_coax0, width_coax1, sourcemode);
+            //coaxUpdateGPU<<<1, 1, 0, stream>>>(PortSignal_GPU, Ex_GPU, Ey_GPU, Hx_GPU, Hy_GPU, source_adjoint_GPU, i, coax_ind[0], Imax, Jmax, delX, Z_c, depth_coax0, depth_coax1, width_coax0, width_coax1, sourcemode);
         }
         else if (mode == 0) ////forward
         {
@@ -362,196 +329,7 @@ public:
             PortEGPU<<<1, NumThreads, 0, stream>>>(PortSignal_GPU, Ex_GPU, Ey_GPU, current, source, i, coax_ind[0], Imax, Jmax, delX, Z_c, depth_coax0, depth_coax1, width_coax0, width_coax1, 1);
         }
     }
-    void recordForwardField(int *time)
-    {
-        int i = time[0];
-        GPU_Read_Ant_Field<<<DesignX *(DesignY + 1) / NumThreads + 1, NumThreads, 0, stream>>>(E1_ant_GPU, Ex_GPU, DesignX, DesignY + 1, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-        GPU_Read_Ant_Field<<<(DesignX + 1) * DesignY / NumThreads + 1, NumThreads, 0, stream>>>(E2_ant_GPU, Ey_GPU, DesignX + 1, DesignY, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-        if (NumML > 1)
-        {
-            for (size_t ind = 1; ind < NumML; ind++)
-            {
-                const size_t E1ind = ind * max_TimeSteps;
-                GPU_Read_Ant_Field<<<DesignX *(DesignY + 1) / NumThreads + 1, NumThreads, 0, stream>>>(E1_ant_GPU, Ex_GPU, DesignX, DesignY + 1, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z + Ind_ML[ind], Imax, Jmax, i + E1ind);
-                const size_t E2ind = ind * max_TimeSteps;
-                GPU_Read_Ant_Field<<<(DesignX + 1) * DesignY / NumThreads + 1, NumThreads, 0, stream>>>(E2_ant_GPU, Ey_GPU, DesignX + 1, DesignY, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z + Ind_ML[ind], Imax, Jmax, i + E2ind);
-            }
-        }
-    }
 
-    void recordGPUField(int *input)
-    {
-        int i = input[0];    /////time
-        int mode = input[1]; ////mode
-        if (mode == 0)       ////receiving mode
-        {
-            GPU_Read_Ant_Field<<<DesignX *(DesignY + 1) / NumThreads + 1, NumThreads, 0, stream>>>(E1_ant_GPU, Ex_GPU, DesignX, DesignY + 1, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-            GPU_Read_Ant_Field<<<(DesignX + 1) * DesignY / NumThreads + 1, NumThreads, 0, stream>>>(E2_ant_GPU, Ey_GPU, DesignX + 1, DesignY, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-        }
-        else if (mode == 1) ////transimission mode
-        {
-            GPU_Read_Ant_Field<<<DesignX *(DesignY + 1) / NumThreads + 1, NumThreads, 0, stream>>>(E1_ant_GPU_2, Ex_GPU, DesignX, DesignY + 1, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-            GPU_Read_Ant_Field<<<(DesignX + 1) * DesignY / NumThreads + 1, NumThreads, 0, stream>>>(E2_ant_GPU_2, Ey_GPU, DesignX + 1, DesignY, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-        }
-        else if (mode == 2) ////adjoint mode
-        {
-            GPU_Read_Ant_Field<<<DesignX *(DesignY + 1) / NumThreads + 1, NumThreads, 0, stream>>>(E1_ant_AD_GPU, Ex_GPU, DesignX, DesignY + 1, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-            GPU_Read_Ant_Field<<<(DesignX + 1) * DesignY / NumThreads + 1, NumThreads, 0, stream>>>(E2_ant_AD_GPU, Ey_GPU, DesignX + 1, DesignY, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-        }
-    }
-
-    void computeGradientGPU(int *input)
-    {
-        size_t newblock = (max_TimeSteps + 2 * NumThreads - 1) / (2 * NumThreads);
-        int mode = input[0];
-        int size1 = DesignX * (DesignY + 1);
-        int size2 = (DesignX + 1) * DesignY;
-        if (mode == 0) ////receiving mode
-        {
-            for (size_t i = 0; i < size1; i++)
-            {
-                computeGradientGPU_Mul<<<(max_TimeSteps + NumThreads - 1) / NumThreads, NumThreads, 0, stream>>>(E1_ant_GPU, E1_ant_AD_GPU, G_temp, i, size1, max_TimeSteps);
-                sum_reductions<NumThreads><<<newblock, NumThreads, 0, stream>>>(G_temp, G_output, max_TimeSteps);
-                sum_reduce<NumThreads><<<1, NumThreads, 0, stream>>>(G_output, G1_ant_GPU, i, newblock);
-            }
-            for (size_t i = 0; i < size2; i++)
-            {
-                computeGradientGPU_Mul<<<(max_TimeSteps + NumThreads - 1) / NumThreads, NumThreads, 0, stream>>>(E2_ant_GPU, E2_ant_AD_GPU, G_temp, i, size2, max_TimeSteps);
-                sum_reductions<NumThreads><<<newblock, NumThreads, 0, stream>>>(G_temp, G_output, max_TimeSteps);
-                sum_reduce<NumThreads><<<1, NumThreads, 0, stream>>>(G_output, G2_ant_GPU, i, newblock);
-            }
-        }
-        else if (mode == 1) ////transmitting mode
-        {
-            for (size_t i = 0; i < size1; i++)
-            {
-                computeGradientGPU_Mul<<<(max_TimeSteps + NumThreads - 1) / NumThreads, NumThreads, 0, stream>>>(E1_ant_GPU_2, E1_ant_AD_GPU, G_temp, i, size1, max_TimeSteps);
-                sum_reductions<NumThreads><<<newblock, NumThreads, 0, stream>>>(G_temp, G_output, max_TimeSteps);
-                sum_reduce<NumThreads><<<1, NumThreads, 0, stream>>>(G_output, G1_ant_GPU, i, newblock);
-            }
-
-            for (size_t i = 0; i < size2; i++)
-            {
-                computeGradientGPU_Mul<<<(max_TimeSteps + NumThreads - 1) / NumThreads, NumThreads, 0, stream>>>(E2_ant_GPU_2, E2_ant_AD_GPU, G_temp, i, size2, max_TimeSteps);
-                sum_reductions<NumThreads><<<newblock, NumThreads, 0, stream>>>(G_temp, G_output, max_TimeSteps);
-                sum_reduce<NumThreads><<<1, NumThreads, 0, stream>>>(G_output, G2_ant_GPU, i, newblock);
-            }
-        }
-        cudaMemcpyAsync(G1_ant, G1_ant_GPU, sizeof(double) * size1, cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(G2_ant, G2_ant_GPU, sizeof(double) * size2, cudaMemcpyDeviceToHost, stream);
-        cudaMemsetAsync(G1_ant_GPU, 0, sizeof(double) * size1, stream);
-        cudaMemsetAsync(G2_ant_GPU, 0, sizeof(double) * size2, stream);
-        cudaMemsetAsync(G_output, 0, sizeof(double) * max_TimeSteps, stream);
-        cudaMemsetAsync(G_temp, 0, sizeof(double) * max_TimeSteps, stream);
-    }
-
-    void impulse_response(real *data, int *num)
-    {
-        init_impulse = 1;
-        ht = new real[num[0] * max_TimeSteps];
-        for (size_t i = 0; i < num[0] * max_TimeSteps; i++)
-            ht[i] = data[i];
-        cudaMalloc((void **)&ht_GPU, num[0] * max_TimeSteps * real_size);
-        cudaMemcpyAsync(ht_GPU, ht, num[0] * max_TimeSteps * real_size, cudaMemcpyHostToDevice, stream);
-        cudaMalloc((void **)&W_plus, num[0] * max_TimeSteps * real_size);
-        cudaMemcpyAsync(W_plus, ht, num[0] * max_TimeSteps * real_size, cudaMemcpyHostToDevice, stream);
-    }
-    void updateAntCond(real *sigma_antx, real *sigma_anty)
-    {
-        for (size_t i = PosDesign[0].x; i <= PosDesign[0].x + DesignX - 1; i++)
-            for (size_t j = PosDesign[0].y; j <= PosDesign[0].y + DesignY; j++)
-            {
-                sigma_sx[i + j * Imax + PosDesign[0].z * (Imax * Jmax)] = sigma_antx[i - PosDesign[0].x + (j - PosDesign[0].y) * DesignX];
-            }
-        for (size_t i = PosDesign[0].x; i <= PosDesign[0].x + DesignX; i++)
-            for (size_t j = PosDesign[0].y; j <= PosDesign[0].y + DesignY - 1; j++)
-            {
-                sigma_sy[i + j * Imax + PosDesign[0].z * (Imax * Jmax)] = sigma_anty[i - PosDesign[0].x + (j - PosDesign[0].y) * (DesignX + 1)];
-            }
-        updateCuda();
-    }
-
-    void updateAntCondML(real *sigma_antx, real *sigma_anty, int *k)
-    {
-
-        for (size_t i = PosDesign[0].x; i <= PosDesign[0].x + DesignX - 1; i++)
-            for (size_t j = PosDesign[0].y; j <= PosDesign[0].y + DesignY; j++)
-            {
-                sigma_sx[i + j * Imax + (PosDesign[0].z + k[0]) * (Imax * Jmax)] = sigma_antx[i - PosDesign[0].x + (j - PosDesign[0].y) * DesignX];
-            }
-        for (size_t i = PosDesign[0].x; i <= PosDesign[0].x + DesignX; i++)
-            for (size_t j = PosDesign[0].y; j <= PosDesign[0].y + DesignY - 1; j++)
-            {
-                sigma_sy[i + j * Imax + (PosDesign[0].z + k[0]) * (Imax * Jmax)] = sigma_anty[i - PosDesign[0].x + (j - PosDesign[0].y) * (DesignX + 1)];
-            }
-
-        updateCuda();
-    }
-
-    void gradient_calculation_all(int *flag)
-    {
-        if (flag[0] == 1)
-        {
-            cudaMemcpyAsync(E1_ant, E1_ant_GPU, size_t_E1_ant, cudaMemcpyDeviceToHost, stream);
-            cudaMemcpyAsync(E2_ant, E2_ant_GPU, size_t_E2_ant, cudaMemcpyDeviceToHost, stream);
-        }
-        else if (flag[0] == 2)
-        {
-            cudaMemcpyAsync(E1_ant_AD, E1_ant_GPU, size_t_E1_ant, cudaMemcpyDeviceToHost, stream);
-            cudaMemcpyAsync(E2_ant_AD, E2_ant_GPU, size_t_E2_ant, cudaMemcpyDeviceToHost, stream);
-        }
-        else if (flag[0] == 4)
-        {
-            cudaMemcpyAsync(E1_ant_temp, E1_ant_GPU, size_t_E1_ant, cudaMemcpyDeviceToHost, stream);
-            cudaMemcpyAsync(E2_ant_temp, E2_ant_GPU, size_t_E2_ant, cudaMemcpyDeviceToHost, stream);
-        }
-        else if (flag[0] == 3)
-        {
-            size_t size = DesignX * (DesignY + 1);
-            computeG_ant(E1_ant, E1_ant_AD, G1_ant, size, max_TimeSteps);
-            // for(int ti=0;ti<size;ti++){
-            //     G1_ant[ti]=0;
-            //     for(int i=0;i<max_TimeSteps-1;i++){
-            //         G1_ant[ti]=G1_ant[ti]+E1_ant[(max_TimeSteps-i-1-1)*size+ti]*(E1_ant_AD[ti+i*size]+E1_ant_AD[ti+(i+1)*size])/2.0;
-            //     }
-            // }
-            size = (DesignX + 1) * DesignY;
-            computeG_ant(E2_ant, E2_ant_AD, G2_ant, size, max_TimeSteps);
-
-            // for(int ti=0;ti<size;ti++){
-            //     G2_ant[ti]=0;
-            //     for(int i=0;i<max_TimeSteps-1;i++){
-            //         G2_ant[ti]=G2_ant[ti]+E2_ant[(max_TimeSteps-i-1-1)*size+ti]*(E2_ant_AD[ti+i*size]+E2_ant_AD[ti+(i+1)*size])/2.0;
-            //     }
-            // }
-        }
-        else if (flag[0] == 5)
-        {
-            size_t size = DesignX * (DesignY + 1);
-            computeG_ant(E1_ant_temp, E1_ant_AD, G1_ant, size, max_TimeSteps);
-
-            // for(int ti=0;ti<size;ti++){
-            //     G1_ant[ti]=0;
-            //     for(int i=0;i<max_TimeSteps-1;i++){
-            //         G1_ant[ti]=G1_ant[ti]+E1_ant_temp[(max_TimeSteps-i-1-1)*size+ti]*(E1_ant_AD[ti+i*size]+E1_ant_AD[ti+(i+1)*size])/2.0;
-            //     }
-            // }
-            size = (DesignX + 1) * DesignY;
-            computeG_ant(E2_ant_temp, E2_ant_AD, G2_ant, size, max_TimeSteps);
-
-            // for(int ti=0;ti<size;ti++){
-            //     G2_ant[ti]=0;
-            //     for(int i=0;i<max_TimeSteps-1;i++){
-            //         G2_ant[ti]=G2_ant[ti]+E2_ant_temp[(max_TimeSteps-i-1-1)*size+ti]*(E2_ant_AD[ti+i*size]+E2_ant_AD[ti+(i+1)*size])/2.0;
-            //     }
-            // }
-        }
-    }
-    void InitAdjoint(real *sourceIn)
-    {
-        cudaMemcpy(PortSignal_GPU, sourceIn, max_TimeSteps * real_size, cudaMemcpyHostToDevice);
-        AdjointSource<<<(max_TimeSteps + NumThreads - 1) / NumThreads, NumThreads, 0>>>(source_adjoint_GPU, PortSignal_GPU, max_TimeSteps);
-    }
     void updateH_All()
     {
         if (init_mu == 1)
@@ -693,163 +471,6 @@ public:
         GPU_updateEz_PlaneWaveZ_Y<<<dimGrid_EzPWZ_Y, dimBlock, 0, stream>>>(Ez_GPU, Hy_1D_GPU, c, Cezh_GPU, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1, time);
     }
 
-    /// 1D
-
-    void initAntCond(int *ant_pos, int *dim_ant, real *sigma_init)
-    {
-        init_design = 1;
-
-        size_t free_mem, total_mem;
-        cudaMemGetInfo(&free_mem, &total_mem);
-        printf("Free: %.2f GB, Total: %.2f GB\n", free_mem / (1024.0 * 1024.0 * 1024.0), total_mem / (1024.0 * 1024.0 * 1024.0));
-        PosDesign = new Antenna[numAnt];
-        PosDesign[0].x = ant_pos[0];
-        PosDesign[0].y = ant_pos[1];
-        PosDesign[0].z = ant_pos[2];
-        DesignX = dim_ant[0];
-        DesignY = dim_ant[1];
-        DesignZ = dim_ant[2];
-        size_t_E1_ant = static_cast<size_t>(max_TimeSteps) * DesignX * (DesignY + 1) * real_size;
-        size_t_E2_ant = static_cast<size_t>(max_TimeSteps) * (DesignX + 1) * DesignY * real_size;
-        size_E1_ant = static_cast<size_t>(max_TimeSteps) * DesignX * (DesignY + 1);
-        size_E2_ant = static_cast<size_t>(max_TimeSteps) * (DesignX + 1) * DesignY;
-        printf("size_t_E1_ant: %zu\n", size_t_E1_ant);
-        printf("size_t_E2_ant: %zu\n", size_t_E2_ant);
-        printf("size_E1_ant: %zu\n", size_E1_ant);
-        printf("size_E2_ant: %zu\n", size_E2_ant);
-        cudaMallocHost(&E1_ant, max_TimeSteps * DesignX * (DesignY + 1) * real_size);      // Pinned memory for asynchronous copy
-        cudaMallocHost(&E2_ant, max_TimeSteps * (DesignX + 1) * DesignY * real_size);      // Pinned memory for asynchronous copy
-        cudaMallocHost(&E1_ant_AD, max_TimeSteps * DesignX * (DesignY + 1) * real_size);   // Pinned memory for asynchronous copy
-        cudaMallocHost(&E2_ant_AD, max_TimeSteps * (DesignX + 1) * DesignY * real_size);   // Pinned memory for asynchronous copy
-        cudaMallocHost(&E1_ant_temp, max_TimeSteps * DesignX * (DesignY + 1) * real_size); // Pinned memory for asynchronous copy
-        cudaMallocHost(&E2_ant_temp, max_TimeSteps * (DesignX + 1) * DesignY * real_size); // Pinned memory for asynchronous copy
-        cudaMallocHost(&G1_ant, DesignX * (DesignY + 1) * sizeof(double));                 // Pinned memory for asynchronous copy
-        cudaMallocHost(&G2_ant, (DesignX + 1) * DesignY * sizeof(double));                 // Pinned memory for asynchronous copy
-        std::fill(G1_ant, G1_ant + DesignX * (DesignY + 1), 0.0);
-        std::fill(G2_ant, G2_ant + (DesignX + 1) * DesignY, 0.0);
-        std::fill(E1_ant, E1_ant + DesignX * (DesignY + 1) * max_TimeSteps, 0.0);
-        std::fill(E1_ant_AD, E1_ant_AD + DesignX * (DesignY + 1) * max_TimeSteps, 0.0);
-        std::fill(E1_ant_temp, E1_ant_temp + (DesignX + 1) * DesignY * max_TimeSteps, 0.0);
-        std::fill(E2_ant, E2_ant + (DesignX + 1) * DesignY * max_TimeSteps, 0.0);
-        std::fill(E2_ant_AD, E2_ant_AD + (DesignX + 1) * DesignY * max_TimeSteps, 0.0);
-        std::fill(E2_ant_temp, E2_ant_temp + (DesignX + 1) * DesignY * max_TimeSteps, 0.0);
-
-        for (size_t i = PosDesign[0].x; i <= PosDesign[0].x + DesignX - 1; i++)
-        {
-            for (size_t j = PosDesign[0].y; j <= PosDesign[0].y + DesignY; j++)
-            {
-                sigma_sx[i + j * Imax + PosDesign[0].z * (Imax * Jmax)] = sigma_init[0];
-            }
-        }
-        for (size_t i = PosDesign[0].x; i <= PosDesign[0].x + DesignX; i++)
-        {
-            for (size_t j = PosDesign[0].y; j <= PosDesign[0].y + DesignY - 1; j++)
-            {
-                sigma_sy[i + j * Imax + PosDesign[0].z * (Imax * Jmax)] = sigma_init[0];
-            }
-        }
-        cudaMalloc((void **)&E1_ant_GPU, max_TimeSteps * DesignX * (DesignY + 1) * real_size);
-        cudaMemsetAsync(E1_ant_GPU, 0, max_TimeSteps * DesignX * (DesignY + 1) * real_size, stream);
-        cudaMalloc((void **)&E2_ant_GPU, max_TimeSteps * (DesignX + 1) * DesignY * real_size);
-        cudaMemsetAsync(E2_ant_GPU, 0, max_TimeSteps * (DesignX + 1) * DesignY * real_size, stream);
-    }
-
-    void initAntCondML(int *ant_pos, int *dim_ant, real *sigma_init, int *Ind)
-    {
-        init_design = 1;
-
-        size_t free_mem, total_mem;
-        cudaMemGetInfo(&free_mem, &total_mem);
-
-        printf("Free: %.2f GB, Total: %.2f GB\n", free_mem / (1024.0 * 1024.0 * 1024.0), total_mem / (1024.0 * 1024.0 * 1024.0));
-
-        PosDesign = new Antenna[numAnt];
-        PosDesign[0].x = ant_pos[0];
-        PosDesign[0].y = ant_pos[1];
-        PosDesign[0].z = ant_pos[2];
-        DesignX = dim_ant[0];
-        DesignY = dim_ant[1];
-        DesignZ = dim_ant[2];
-        NumML = dim_ant[3];
-        Ind_ML = new size_t[NumML];
-
-        for (size_t i = 0; i < NumML; i++)
-        {
-            Ind_ML[i] = Ind[i];
-        }
-        size_t_E1_ant = static_cast<size_t>(max_TimeSteps) * DesignX * (DesignY + 1) * NumML * real_size;
-        size_t_E2_ant = static_cast<size_t>(max_TimeSteps) * (DesignX + 1) * DesignY * NumML * real_size;
-        size_E1_ant = static_cast<size_t>(max_TimeSteps) * DesignX * (DesignY + 1) * NumML;
-        size_E2_ant = static_cast<size_t>(max_TimeSteps) * (DesignX + 1) * DesignY * NumML;
-        printf("size_t_E1_ant: %.2f GB\n", size_t_E1_ant / (1024.0 * 1024.0 * 1024.0));
-        printf("size_t_E2_ant: %.2f GB\n", size_t_E2_ant / (1024.0 * 1024.0 * 1024.0));
-        printf("size_E1_ant: %.2f GB\n", size_E1_ant / (1024.0 * 1024.0 * 1024.0));
-        printf("size_E2_ant: %.2f GB\n", size_E2_ant / (1024.0 * 1024.0 * 1024.0));
-        cudaMallocHost(&E1_ant, size_t_E1_ant);                                    // Pinned memory for asynchronous copy
-        cudaMallocHost(&E2_ant, size_t_E2_ant);                                    // Pinned memory for asynchronous copy
-        cudaMallocHost(&E1_ant_AD, size_t_E1_ant);                                 // Pinned memory for asynchronous copy
-        cudaMallocHost(&E2_ant_AD, size_t_E2_ant);                                 // Pinned memory for asynchronous copy
-        cudaMallocHost(&E1_ant_temp, size_t_E1_ant);                               // Pinned memory for asynchronous copy
-        cudaMallocHost(&E2_ant_temp, size_t_E2_ant);                               // Pinned memory for asynchronous copy
-        cudaMallocHost(&G1_ant, DesignX * (DesignY + 1) * NumML * sizeof(double)); // Pinned memory for asynchronous copy
-        cudaMallocHost(&G2_ant, (DesignX + 1) * DesignY * NumML * sizeof(double)); // Pinned memory for asynchronous copy
-        std::fill(G1_ant, G1_ant + DesignX * (DesignY + 1) * NumML, 0.0);
-        std::fill(G2_ant, G2_ant + (DesignX + 1) * DesignY * NumML, 0.0);
-        std::fill(E1_ant, E1_ant + size_E1_ant, 0.0);
-        std::fill(E1_ant_AD, E1_ant_AD + size_E1_ant, 0.0);
-        std::fill(E1_ant_temp, E1_ant_temp + size_E1_ant, 0.0);
-        std::fill(E2_ant, E2_ant + size_E2_ant, 0.0);
-        std::fill(E2_ant_AD, E2_ant_AD + size_E2_ant, 0.0);
-        std::fill(E2_ant_temp, E2_ant_temp + size_E2_ant, 0.0);
-        for (size_t k = 0; k < NumML; k++)
-        {
-            for (size_t i = PosDesign[0].x; i <= PosDesign[0].x + DesignX - 1; i++)
-            {
-                for (size_t j = PosDesign[0].y; j <= PosDesign[0].y + DesignY; j++)
-                {
-                    sigma_sx[i + j * Imax + (PosDesign[0].z + Ind_ML[k]) * (Imax * Jmax)] = sigma_init[0];
-                }
-            }
-            for (size_t i = PosDesign[0].x; i <= PosDesign[0].x + DesignX; i++)
-            {
-                for (size_t j = PosDesign[0].y; j <= PosDesign[0].y + DesignY - 1; j++)
-                {
-                    sigma_sy[i + j * Imax + (PosDesign[0].z + Ind_ML[k]) * (Imax * Jmax)] = sigma_init[0];
-                }
-            }
-        }
-        cudaMalloc((void **)&E1_ant_GPU, size_t_E1_ant);
-        cudaMemsetAsync(E1_ant_GPU, 0, size_t_E1_ant, stream);
-        cudaMalloc((void **)&E2_ant_GPU, size_t_E2_ant);
-        cudaMemsetAsync(E2_ant_GPU, 0, size_t_E2_ant, stream);
-        cudaError_t err = cudaGetLastError();
-        if (err != cudaSuccess)
-        {
-            printf("CUDA error: %s\n", cudaGetErrorString(err));
-        }
-    }
-
-    void initDesignGPU()
-    {
-        init_design_GPU = 1;
-        cudaMalloc((void **)&E1_ant_AD_GPU, max_TimeSteps * DesignX * (DesignY + 1) * real_size);
-        cudaMemsetAsync(E1_ant_AD_GPU, 0, max_TimeSteps * DesignX * (DesignY + 1) * real_size, stream);
-        cudaMalloc((void **)&E2_ant_AD_GPU, max_TimeSteps * (DesignX + 1) * DesignY * real_size);
-        cudaMemsetAsync(E2_ant_AD_GPU, 0, max_TimeSteps * (DesignX + 1) * DesignY * real_size, stream);
-        cudaMalloc((void **)&E1_ant_GPU_2, max_TimeSteps * DesignX * (DesignY + 1) * real_size);
-        cudaMemsetAsync(E1_ant_GPU_2, 0, max_TimeSteps * DesignX * (DesignY + 1) * real_size, stream);
-        cudaMalloc((void **)&E2_ant_GPU_2, max_TimeSteps * (DesignX + 1) * DesignY * real_size);
-        cudaMemsetAsync(E2_ant_GPU_2, 0, max_TimeSteps * (DesignX + 1) * DesignY * real_size, stream);
-        cudaMalloc((void **)&G1_ant_GPU, DesignX * (DesignY + 1) * real_size);
-        cudaMemsetAsync(G1_ant_GPU, 0, DesignX * (DesignY + 1) * real_size, stream);
-        cudaMalloc((void **)&G2_ant_GPU, (DesignX + 1) * DesignY * real_size);
-        cudaMemsetAsync(G2_ant_GPU, 0, (DesignX + 1) * DesignY * real_size, stream);
-        size_t newblock = (max_TimeSteps + 2 * NumThreads - 1) / (2 * NumThreads);
-        cudaMalloc(&G_temp, sizeof(double) * max_TimeSteps);
-        cudaMemsetAsync(G_temp, 0, sizeof(double) * max_TimeSteps);
-        cudaMalloc(&G_output, sizeof(double) * newblock);
-        cudaMemsetAsync(G_output, 0, sizeof(double) * newblock);
-    }
 
     void outputVis(real *Data, int *flag)
     {
@@ -895,51 +516,6 @@ public:
                 Data[i] = Ez[i];
             }
         }
-        if (flag[0] == 4)
-        {
-
-            cudaMemcpyAsync(E1_ant, E1_ant_GPU, size_t_E1_ant, cudaMemcpyDeviceToHost, stream);
-            cudaStreamSynchronize(stream);
-            for (size_t i = 0; i < size_E1_ant; i++)
-            {
-                Data[i] = E1_ant[i];
-            }
-        }
-        if (flag[0] == 5)
-        {
-            cudaMemcpyAsync(E2_ant, E2_ant_GPU, size_t_E2_ant, cudaMemcpyDeviceToHost, stream);
-            cudaStreamSynchronize(stream);
-            for (size_t i = 0; i < size_E2_ant; i++)
-            {
-                Data[i] = E2_ant[i];
-            }
-        }
-        if (flag[0] == 6)
-        {
-            if (NumML > 1)
-            {
-                for (size_t i = 0; i < NumML * DesignX * (DesignY + 1); i++)
-                    Data[i] = G1_ant[i];
-            }
-            else
-            {
-                for (size_t i = 0; i < DesignX * (DesignY + 1); i++)
-                    Data[i] = G1_ant[i];
-            }
-        }
-        if (flag[0] == 7)
-        {
-            if (NumML > 1)
-            {
-                for (size_t i = 0; i < NumML * (DesignX + 1) * DesignY; i++)
-                    Data[i] = G2_ant[i];
-            }
-            else
-            {
-                for (size_t i = 0; i < (DesignX + 1) * DesignY; i++)
-                    Data[i] = G2_ant[i];
-            }
-        }
         if (flag[0] == 11)
         {
             cudaMemcpyAsync(Ez_1D, Ez_1D_GPU, max_TimeSteps * size_1D * real_size, cudaMemcpyDeviceToHost, stream);
@@ -957,34 +533,6 @@ public:
             {
                 Data[i] = Ez_1D[i];
             }
-        }
-        if (flag[0] == 13)
-        {
-            cudaMemcpy(PortSignal, source_adjoint_GPU, (numAnt * max_TimeSteps) * real_size, cudaMemcpyDeviceToHost);
-            cudaStreamSynchronize(stream);
-            for (size_t i = 0; i < numAnt * max_TimeSteps; i++)
-            {
-                Data[i] = PortSignal[i];
-            }
-        }
-    }
-    void outputVisDouble(double *Data, int flag)
-    {
-        if (flag == 6)
-        {
-            // Output G1_ant
-            size_t total = (NumML > 1) ? NumML * DesignX * (DesignY + 1)
-                                       : DesignX * (DesignY + 1);
-            for (size_t i = 0; i < total; ++i)
-                Data[i] = G1_ant[i];
-        }
-        else if (flag == 7)
-        {
-            // Output G2_ant
-            size_t total = (NumML > 1) ? NumML * (DesignX + 1) * DesignY
-                                       : (DesignX + 1) * DesignY;
-            for (size_t i = 0; i < total; ++i)
-                Data[i] = G2_ant[i];
         }
     }
 
@@ -1261,8 +809,6 @@ public:
         cudaMallocHost(&PortSignal, numAnt * max_TimeSteps * real_size); // Pinned memory for asynchronous copy
         std::fill(PortSignal, PortSignal + numAnt * max_TimeSteps, 0.0);
         cudaMalloc((void **)&PortSignal_GPU, (numAnt * max_TimeSteps) * real_size);
-        cudaMalloc((void **)&source_adjoint_GPU, (numAnt * max_TimeSteps) * real_size);
-        cudaMemsetAsync(source_adjoint_GPU, 0, (numAnt * max_TimeSteps) * real_size, stream);
         cudaMemsetAsync(PortSignal_GPU, 0, (numAnt * max_TimeSteps) * real_size, stream);
 
         ///////relase memory//////////
@@ -1394,7 +940,7 @@ public:
         cudaMemcpyAsync(Ceyh_GPU, Ceyh, (IJK_Size)*real_size, cudaMemcpyHostToDevice, stream);
         cudaMemcpyAsync(Cezh_GPU, Cezh, (IJK_Size)*real_size, cudaMemcpyHostToDevice, stream);
     }
-    void ResetFieldAll_1()
+    void ResetFieldAll()
     {
         cudaMemsetAsync(Ex_GPU, 0, IJK_Size * real_size, stream);
         cudaMemsetAsync(Ey_GPU, 0, IJK_Size * real_size, stream);
@@ -1419,7 +965,7 @@ public:
         cudaMemsetAsync(psi_Hzx_GPU, 0, 2 * size_x * real_size, stream);
     }
 
-    ~simulation()
+    ~simFDTD()
     {
         if (init_antenna == 1)
         {
@@ -1522,8 +1068,6 @@ public:
 
             cudaFree(PortSignal);
             cudaFree(PortSignal_GPU);
-            cudaFree(source_adjoint_GPU);
-
             cudaFree(current);
         }
         /// 1D
@@ -1536,49 +1080,10 @@ public:
             cudaFree(E_inv_1D_GPU);
         }
 
-        if (init_impulse == 1)
-        {
-            delete[] ht;
-            cudaFree(ht_GPU);
-            cudaFree(W_plus);
-        }
-        if (init_design == 1)
-        {
-            delete[] PosDesign;
-
-            // cudaFree(E3_ant_GPU);
-            cudaFree(E1_ant_GPU);
-            cudaFree(E2_ant_GPU);
-
-            // delete[] E3_ant;
-            cudaFreeHost(E1_ant);
-            cudaFreeHost(E2_ant);
-            cudaFreeHost(E1_ant_AD);
-            cudaFreeHost(E2_ant_AD);
-            cudaFreeHost(E1_ant_temp);
-            cudaFreeHost(E2_ant_temp);
-            cudaFreeHost(G1_ant);
-            cudaFreeHost(G2_ant);
-            if (Ind_ML)
-                delete[] Ind_ML;
-        }
-        if (init_design_GPU == 1)
-        {
-            delete[] PosDesign;
-
-            cudaFree(E1_ant_AD_GPU);
-            cudaFree(E2_ant_AD_GPU);
-            cudaFree(E1_ant_GPU_2);
-            cudaFree(E2_ant_GPU_2);
-            cudaFree(G1_ant_GPU);
-            cudaFree(G2_ant_GPU);
-            cudaFree(G_temp);
-            cudaFree(G_output);
-        }
         cudaStreamDestroy(stream);
     };
 
-private:
+protected:
     struct Antenna
     {
         size_t x;
@@ -1587,12 +1092,6 @@ private:
     } *PosDesign, *PosCoax;
     size_t *coax_ind;
     size_t *Ind_ML;
-    size_t NumML = 0;
-
-    size_t size_t_E1_ant;
-    size_t size_t_E2_ant;
-    size_t size_E1_ant;
-    size_t size_E2_ant;
 
     int init_const = 0;
     int init_antenna = 0;
@@ -1601,10 +1100,6 @@ private:
     int init_readysimulation = 0;
     int init_1D = 0;
     int init_mu = 0;
-    int init_impulse;
-    int init_design;
-    int init_design_GPU;
-    size_t block_size;
     real *Ex;
     real *Ey;
     real *Ez;
@@ -1759,46 +1254,6 @@ private:
     real *H_inv_1D_GPU;
     size_t size_1D;
 
-    real *E3_ant_GPU;
-    real *E1_ant_GPU;
-    real *E2_ant_GPU;
-
-    real *E1_ant_AD_GPU;
-    real *E2_ant_AD_GPU;
-    real *E3_ant_AD_GPU;
-
-    real *E1_ant_GPU_2;
-    real *E2_ant_GPU_2;
-    real *E3_ant_GPU_2;
-
-    double *G1_ant_GPU;
-    double *G2_ant_GPU;
-    double *G3_ant_GPU;
-
-    double *G_temp;
-    double *G_output;
-
-    real *E3_ant_temp;
-    real *E1_ant_temp;
-    real *E2_ant_temp;
-
-    //
-    double *G3_ant;
-    double *G1_ant;
-    double *G2_ant;
-
-    real *E3_ant;
-    real *E1_ant;
-    real *E2_ant;
-
-    real *E3_ant_AD;
-    real *E1_ant_AD;
-    real *E2_ant_AD;
-
-    size_t DesignX;
-    size_t DesignY;
-    size_t DesignZ;
-    real *source_adjoint_GPU;
     real sigma_max;
     int width_coax1;
     int width_coax0;
@@ -1825,82 +1280,4 @@ private:
 
     cudaStream_t stream;
 };
-#endif // SIMULATION_H
-
-// ///////////////
-// void FDTD_Forward_time(int *time, int *mode)
-//     {
-//         int i = time[0];
-//         int nstep = i * size_1D;
-//         if (mode[0] == 0) //////Transimission mode
-//         {
-//             updateH_All();
-//             updateH_PML();
-//             updateE_All();
-//             updateE_PML();
-//             // PortUpdate<<<1, 1, 0, stream>>>(PortSignal_GPU, Ex_GPU, Ey_GPU, Hx_GPU, Hy_GPU, source_GPU, i, current, coax_ind[0], Imax, Jmax, delX, Z_c, width_coax0, width_coax1, 1);
-//             coaxUpdateGPU<<<1, 1, 0, stream>>>(PortSignal_GPU, Ex_GPU, Ey_GPU, Hx_GPU, Hy_GPU, source_GPU, i, coax_ind[0], Imax, Jmax, delX, Z_c, depth_coax0, depth_coax1, width_coax0, width_coax1, 1);
-
-//             // Current_coax<<<1, 1, 0, stream>>>(current, Hx_GPU, Hy_GPU, coax_ind[0], Imax, Jmax, delX, width_coax0, width_coax1);
-//             //  UpdateSource << <1, 1 >> > (PortSignal_GPU,Ex_GPU, Ey_GPU, source_GPU, i, current, coax_ind[0], Imax, Jmax, delX, Z_c, width_coax0, width_coax1,1);
-//             // AddSource_coax_GPU<<<1, 1, 0, stream>>>(Ex_GPU, Ey_GPU, source_GPU, i, current, coax_ind[0], Imax, Jmax, delX, Z_c, width_coax0, width_coax1);
-//             // ReadCoax<<<1, 1, 0, stream>>>(PortSignal_GPU, Ex_GPU, coax_ind[0], i, current, delX, Z_c, voltage);
-//             // GPU_Read_Ant_Field<<<DesignY *(DesignZ + 1) / NumThreads + 1, NumThreads, 0, stream>>>(E1_ant_GPU, Ey_GPU, DesignY, DesignZ + 1, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-//             // GPU_Read_Ant_Field<<<(DesignY + 1) * DesignZ / NumThreads + 1, NumThreads, 0, stream>>>(E2_ant_GPU, Ez_GPU, DesignY + 1, DesignZ, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-//         }
-//         else if (mode[0] == 1)
-//         {
-//             updateH_All();
-//             updateH_PW_ZY(Ez_1D_GPU, 1, nstep + size_1D - Kmax);
-//             updateH_PW_XY(E_inv_1D_GPU, 1, nstep + size_1D - Imax);
-//             updateH_PML();
-//             updateE_All();
-//             updateE_PW_ZY(Hy_1D_GPU, 1, nstep + size_1D - Kmax);
-//             updateE_PW_XY(H_inv_1D_GPU, 1, nstep + size_1D - Imax);
-//             updateE_PML();
-//             PortUpdate<<<1, 1, 0, stream>>>(PortSignal_GPU, Ex_GPU, Ey_GPU, Hx_GPU, Hy_GPU, source_GPU, i, current, coax_ind[0], Imax, Jmax, delX, Z_c, width_coax0, width_coax1, 0);
-//             // Current_coax<<<1, 1, 0, stream>>>(current, Hx_GPU, Hy_GPU, coax_ind[0], Imax, Jmax, delX, width_coax0, width_coax1);
-//             // UpdateSource<<<1, 1, 0, stream>>>(PortSignal_GPU, Ex_GPU, Ey_GPU, source_GPU, i, current, coax_ind[0], Imax, Jmax, delX, Z_c, width_coax0, width_coax1, 0);
-//             //  AddSource_coax << <1, 1 >> > (Ex_GPU, Ey_GPU, 0.0f, current, coax_ind[0], Imax, Jmax, delX, Z_c, width_coax0, width_coax1, voltage);
-//             //  ReadCoax << <1, 1 >> > (PortSignal_GPU, Ex_GPU, coax_ind[0], i, current, delX, Z_c, voltage);
-//             GPU_Read_Ant_Field<<<DesignY *(DesignZ + 1) / NumThreads + 1, NumThreads, 0, stream>>>(E1_ant_GPU, Ey_GPU, DesignY, DesignZ + 1, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-//             GPU_Read_Ant_Field<<<(DesignY + 1) * DesignZ / NumThreads + 1, NumThreads, 0, stream>>>(E2_ant_GPU, Ez_GPU, DesignY + 1, DesignZ, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-//         }
-
-//         else if (mode[0] == 3)
-//         {
-//             updateH_All();
-//             updateH_PML();
-//             updateE_All();
-//             updateE_PML();
-//             Current_coax<<<1, 1, 0, stream>>>(current, Hx_GPU, Hy_GPU, coax_ind[0], Imax, Jmax, delX, width_coax0, width_coax1);
-//             // UpdateSource << <1, 1 >> > (PortSignal_GPU,Ex_GPU, Ey_GPU, source_GPU, i, current, coax_ind[0], Imax, Jmax, delX, Z_c, width_coax0, width_coax1,1);
-//             AddSource_coax_GPU<<<1, 1, 0, stream>>>(Ex_GPU, Ey_GPU, source_GPU, i, current, coax_ind[0], Imax, Jmax, delX, Z_c, width_coax0, width_coax1);
-//             ReadCoax<<<1, 1, 0, stream>>>(PortSignal_GPU, Ex_GPU, coax_ind[0], i, current, delX, Z_c, voltage);
-//         }
-//         else if (mode[0] == 2)
-//         {
-//             updateH_All();
-//             updateH_PML();
-//             updateE_All();
-//             updateE_PML();
-//             float temp = delX / c / delT;
-//             Current_coax<<<1, 1, 0, stream>>>(current, Hx_GPU, Hy_GPU, coax_ind[0], Imax, Jmax, delX, width_coax0, width_coax1);
-//             AddSource_coax1<<<1, 1, 0, stream>>>(Ex_GPU, Ey_GPU, source[i], current, PosCoax[0].x, PosCoax[0].y, PosCoax[0].z, Imax, Jmax, delX, Z_c, width_coax0, width_coax1,
-//                                                  voltage, temp, PortSignal_GPU, i);
-//         }
-//     }
-
-// ///    void FDTD_Adjoint_time(int *time, int *mode)
-//     {
-//         int i = time[0];
-//         updateH_All();
-//         updateH_PML();
-//         updateE_All();
-//         updateE_PML();
-//         Current_coax<<<1, 1, 0, stream>>>(current, Hx_GPU, Hy_GPU, coax_ind[0], Imax, Jmax, delX, width_coax0, width_coax1);
-//         AddSource_coax_GPU<<<1, 1, 0, stream>>>(Ex_GPU, Ey_GPU, source_adjoint_GPU, i, current, coax_ind[0], Imax, Jmax, delX, Z_c, width_coax0, width_coax1);
-//         ReadCoax<<<1, 1, 0, stream>>>(PortSignal_GPU, Ex_GPU, coax_ind[0], i + max_TimeSteps, current, delX, Z_c, voltage);
-//         GPU_Read_Ant_Field<<<DesignY *(DesignZ + 1) / NumThreads + 1, NumThreads, 0, stream>>>(E1_ant_GPU, Ey_GPU, DesignY, DesignZ + 1, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-//         GPU_Read_Ant_Field<<<(DesignY + 1) * DesignZ / NumThreads + 1, NumThreads, 0, stream>>>(E2_ant_GPU, Ez_GPU, DesignY + 1, DesignZ, PosDesign[0].x, PosDesign[0].y, PosDesign[0].z, Imax, Jmax, i);
-//     }
+#endif

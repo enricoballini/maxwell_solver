@@ -1,6 +1,6 @@
 cd .
 
-pathmex='./MexFunc ';
+pathmex='../mex/1 ';
 arch = strrep(gpuDevice().ComputeCapability, '.', '');  
 nvcc_flag = ['NVCCFLAGS=-gencode=arch=compute_' arch ',code=sm_' arch];
 

@@ -1,30 +1,10 @@
+#include "matlabconfig.h"
 
-#include "simulation.h"
-// #include "mex.hpp"
-// #include "mexAdapter.hpp"
-// using namespace matlab::data;
-// using namespace matlab::mex;
-// class MexFunction : public matlab::mex::Function
-// {
-// public:
-//     void operator()(ArgumentList outputs, ArgumentList inputs)
-//     {
-//         matlab::data::ArrayFactory factory;
 
-//         // Create a new simulation object
-//         simulation *sim = new simulation;
-
-//         // Wrap the pointer into a uint64 scalar
-//         TypedArray<uint64_t> outArray = factory.createScalar(reinterpret_cast<uint64_t>(sim));
-
-//         // Assign to output
-//         outputs[0] = outArray;
-//     }
-// };
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-    simulation *sim = new simulation;
+    simFDTD *sim = new simFDTD;
     //Set the dimensions for the output
     const mwSize dimensions[] = {1, 1};
 
