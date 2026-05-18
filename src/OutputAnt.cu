@@ -1,4 +1,4 @@
-#include "matlabconfig.h"
+#include "simulation.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 { 
@@ -6,7 +6,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     
     float *antData;
     
-    simFDTD * sim = (simFDTD *) (*(uint64_T*) mxGetData(prhs[0]));   
+    simulation * sim = (simulation *) (*(uint64_T*) mxGetData(prhs[0]));   
     
     unsigned int OutAntSize;
     OutAntSize = *( (unsigned int*) mxGetData(prhs[1]));

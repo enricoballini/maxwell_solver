@@ -3,101 +3,40 @@ cd(fileparts(mfilename("fullpath")))
 clear
 close all
 
-FullGPU=0;
-if FullGPU==1
-    disp("Gradient on GPU")
-else
-    disp("Gradient on CPU")
-end
+
 
 addpath(genpath("."),genpath("../Functions"))
 %%%optimization parameters initialization
 clight=299792458;
 mu0=4*pi*1e-7;
 eps0=1/clight^2/mu0;
-delX=0.2104/2/10^3;
+unit=10^3;
+delX=10*unit;
 delT=0.99*delX/(sqrt(3)*clight);
 fctr=5.5e9;
 timeSteps=30000;
-NumOfSidLobes=2;
-PercentageBW =4e9/fctr;
-distancePML=30;
-CoaxHgt=1;
-ProbeHgt=14;
-NumFilter=2;
-opts.FlagSym=3;
-opts.offset1=45;
-opts.offset2=45;
-Csource1D=0.1/delX;
-rho0=0.7;
-Cfilter=0*1e-3;
-cmapping=8;
-Fmapping=@(x) 10.^(cmapping*x-(cmapping-5));
-DesignX=200;
-DesignY=200;
-sizeDesign1=DesignX*(DesignY+1);
-sizeDesign2=(DesignX+1)*DesignY;
-sizeDesign=sizeDesign1+sizeDesign2;
-rmin=sqrt(2)/2;
+distancePML=10;
+
+
+
 %%%%save optimization parameters
-constSim.rmin=rmin;
-constSim.Fmapping=Fmapping;
-constSim.rho0=rho0;
-constSim.DesignX=DesignX;
-constSim.DesignY=DesignY;
 constSim.delX=delX;
 constSim.delT=delT;
 constSim.fctr=fctr;
 constSim.timeSteps=timeSteps;
-constSim.NumOfSidLobes = NumOfSidLobes;
-constSim.PercentageBW =PercentageBW;
-constSim.Dim=[DesignX+distancePML*2,DesignY+distancePML*2,35+ProbeHgt];
-constSim.AntLoc=[constSim.Dim(1)/2-opts.offset1,constSim.Dim(2)/2-opts.offset2,10];
-constSim.Csource1D=Csource1D;
-constSim.NumFilter=NumFilter;
-constSim.opts=opts;
-constSim.rad=10;
-constSim.filtervalues=Cfilter;
-[numAnts,~]=size(constSim.AntLoc);
-[fmaxx,constSim.source]=CreateSource(constSim);
-constSim.epscoax0=mu0/((50*pi)^2*eps0);
-constSim.Z0=sqrt(mu0/eps0/constSim.epscoax0);
-disp("Simulation parameters:")
-disp("spatial step="+delX+", time step="+delT + ", frequency="+fctr+", timesteps="+timeSteps+", sidelobes="+NumOfSidLobes+", bandwidth="+PercentageBW);
-str="antenna location";
-for i=1:size(constSim.AntLoc,1)
-    str=str+" Ant"+i+"=["+constSim.AntLoc(i,1)+","+constSim.AntLoc(i,2)+","+constSim.AntLoc(i,3)+"]";
-end
-disp(str)
 
+constSim.Dim=[230,260,30];
+constSim.AntLoc=[20;20;20];
+[numAnts,~]=size(constSim.AntLoc);
+%[fmaxx,constSim.source]=CreateSource(constSim);
+constSim.source=zeros(1,timeSteps);
 %%%%save path
 flag_plot=1;
-datetime.setDefaultFormats('defaultdate','yyyy-MM-dd')
-Forename=string(datetime("today"))+"AntOptSym_"+num2str(opts.offset1)+"_"+num2str(opts.offset2)+"_";
-current_path="./temp_results";
-if(~exist(current_path,"dir"))
-    mkdir(current_path)
-end
-filenum=0;
-filename=Forename+num2str(DesignX)+"_"+num2str(DesignY)+"_"+filenum+".mat";
-while(isfile(current_path+"/"+filename))
-    filenum=filenum+1;
-    filename=Forename+num2str(DesignX)+"_"+num2str(DesignY)+"_"+filenum+".mat";
-end
-save(current_path+"/"+filename)
-
-
 
 %--------------------project_FDTD_3D-----------------------
 pml_size=10;
 freqRes = [constSim.fctr delX delT];
 TimeDim = [timeSteps constSim.Dim(1) constSim.Dim(2) constSim.Dim(3) numAnts 0 0 0 0];
-width_coax0=TimeDim(6);
-width_coax1=TimeDim(7);
-depth_coax0=TimeDim(8);
-depth_coax1=TimeDim(9);
-
-
 
 % % % %  Extend Dielectric profile for the CPML boundary condition
 estEpsInf   = ones(constSim.Dim);
@@ -109,101 +48,35 @@ extend_dimZ = constSim.Dim(3)+2*pml_size;
 SimOri=round([extend_dimX/2,extend_dimY/2,extend_dimZ/2]);
 eps_infx = ones(extend_dimX,extend_dimY,extend_dimZ);
 sigma_sx = zeros(extend_dimX,extend_dimY,extend_dimZ);
-eps_infx(pml_size+1:constSim.Dim(1)+pml_size,pml_size+1:constSim.Dim(2)+pml_size,pml_size+1:constSim.Dim(3)+pml_size) = estEpsInf;
-sigma_sx(pml_size+1:constSim.Dim(1)+pml_size,pml_size+1:constSim.Dim(2)+pml_size,pml_size+1:constSim.Dim(3)+pml_size) = estCond;
 eps_infy=eps_infx;
 eps_infz=eps_infx;
 sigma_sy=sigma_sx;
 sigma_sz=sigma_sx;
+x1=107+1;
+x2=134+1;
+sigma_sx(1:x1,:,11:17)=0.01586;
+sigma_sx(x2+1:end,:,11:17)=0.001;
+fact=1.1;
+for i=x1+1:x2
+    sigma_sx(i,:,:)=0.01586/fact;
+    fact=fact*1.1;
+end
 
 %FDTD
-P = CreateSimulation();
-SetConst(P,TypeReal(freqRes),TypeInt(TimeDim));
-SetAntennaLocations(P,TypeInt(constSim.AntLoc));
-SetSource(P, TypeReal(constSim.source));
+P = simFDTD('CreateSimulation');
+simFDTD('SetConst',P,TypeReal(freqRes),TypeInt(TimeDim));
+simFDTD('SetAntennaLocations',P,TypeInt(constSim.AntLoc));
+simFDTD('SetSource',P,TypeReal(constSim.source));
 
 
 sigma_max=5.8e7;
-N_coax=(TimeDim(6)+TimeDim(7)+1)*2+(TimeDim(8)+TimeDim(9)+1)*2;
 constSim.mu_r=1;
-constSim.epscoax= constSim.mu_r*mu0/(50*pi*50*pi*eps0)*(4/N_coax)^2;
 
 Ant(1,1)=constSim.AntLoc(1,1)+pml_size+1;
 Ant(1,2)=constSim.AntLoc(1,2)+pml_size+1;
 Ant(1,3)=constSim.AntLoc(1,3)+pml_size+1;
 
 
-sigma_sub=0.0074;
-
-
-%%%%Bot Substrate
-SubBotZ=2;
-SubBotEps=4.4;
-SubBotZ0=0;
-%%%Top Substrate
-SubTopZ=2;
-SubTopEps=4.4;
-
-%%%%Mid Substrate
-SubMidZ=ProbeHgt-SubBotZ-SubTopZ;
-SubMidEps=4.4;
-SubMidZ0=SubBotZ0+SubBotZ;
-
-SubTopZ0=SubMidZ0+SubMidZ;
-
-%%%%%%%%%%Multilayer setting
-IndLayer=[0,-SubTopZ];%,-SubTopZ-SubMidZ];
-NumML=size(IndLayer,2);
-
-
-
-sigma_sx(1:end,1:end,Ant(1,3)+CoaxHgt+SubTopZ0:Ant(1,3)+CoaxHgt+SubTopZ0+SubTopZ)=sigma_sub;
-eps_infx(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubTopZ0:Ant(1,3)+CoaxHgt+SubTopZ0+SubTopZ)=SubTopEps;
-eps_infx(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubTopZ0+SubTopZ)=(1+SubTopEps)/2;
-
-
-sigma_sy(1:end,1:end,Ant(1,3)+CoaxHgt+SubTopZ0:Ant(1,3)+CoaxHgt+SubTopZ0+SubTopZ)=sigma_sub;
-eps_infy(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubTopZ0:Ant(1,3)+CoaxHgt+SubTopZ0+SubTopZ)=SubTopEps;
-eps_infy(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubTopZ0+SubTopZ)=(1+SubTopEps)/2;
-
-
-sigma_sz(1:end,1:end,Ant(1,3)+CoaxHgt+SubTopZ0:Ant(1,3)+CoaxHgt+SubTopZ0+SubTopZ-1)=sigma_sub;
-eps_infz(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubTopZ0:Ant(1,3)+CoaxHgt+SubTopZ0+SubTopZ-1)=SubTopEps;
-
-
-%%%%Mid Substrate
-sigma_sx(1:end,1:end,Ant(1,3)+CoaxHgt+SubMidZ0:Ant(1,3)+CoaxHgt+SubMidZ0+SubMidZ)=sigma_sub;
-eps_infx(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubMidZ0:Ant(1,3)+CoaxHgt+SubMidZ0+SubMidZ)=SubMidEps;
-
-sigma_sy(1:end,1:end,Ant(1,3)+CoaxHgt+SubMidZ0:Ant(1,3)+CoaxHgt+SubMidZ0+SubMidZ)=sigma_sub;
-eps_infy(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubMidZ0:Ant(1,3)+CoaxHgt+SubMidZ0+SubMidZ)=SubMidEps;
-
-sigma_sz(1:end,1:end,Ant(1,3)+CoaxHgt+SubMidZ0:Ant(1,3)+CoaxHgt+SubMidZ0+SubMidZ-1)=sigma_sub;
-eps_infz(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubMidZ0:Ant(1,3)+CoaxHgt+SubMidZ0+SubMidZ-1)=SubMidEps;
-
-%%%%Bot Substrate
-sigma_sx(1:end,1:end,Ant(1,3)+CoaxHgt+SubBotZ0:Ant(1,3)+CoaxHgt+SubBotZ0+SubBotZ)=sigma_sub;
-eps_infx(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubBotZ0:Ant(1,3)+CoaxHgt+SubBotZ0+SubBotZ)=SubBotEps;
-eps_infx(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubBotZ0)=(1+SubBotEps)/2;
-
-
-sigma_sy(1:end,1:end,Ant(1,3)+CoaxHgt+SubBotZ0:Ant(1,3)+CoaxHgt+SubBotZ0+SubBotZ)=sigma_sub;
-eps_infy(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubBotZ0:Ant(1,3)+CoaxHgt+SubBotZ0+SubBotZ)=SubBotEps;
-eps_infy(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubBotZ0)=(1+SubBotEps)/2;
-
-sigma_sz(1:end,1:end,Ant(1,3)+CoaxHgt+SubBotZ0:Ant(1,3)+CoaxHgt+SubBotZ0+SubBotZ-1)=sigma_sub;
-eps_infz(10:end-11,10:end-11,Ant(1,3)+CoaxHgt+SubBotZ0:Ant(1,3)+CoaxHgt+SubBotZ0+SubBotZ-1)=SubBotEps;
-
-%%%Ground
-sigma_sx(1:end,1:end,1:Ant(1,3)+CoaxHgt)=sigma_max;
-sigma_sy(1:end,1:end,1:Ant(1,3)+CoaxHgt)=sigma_max;
-sigma_sz(1:end,1:end,1:Ant(1,3))=sigma_max;
-
-
-[eps_infx,eps_infy,sigma_sx,sigma_sy,sigma_sz]=AddCoaxFull(eps_infx,eps_infy,sigma_sx,sigma_sy,sigma_sz,Ant,depth_coax0,depth_coax1,width_coax0,width_coax1,CoaxHgt,constSim.epscoax);
-sigma_sz(Ant(1,1)-depth_coax0:Ant(1,1)+depth_coax1,Ant(1,2)-width_coax0:Ant(1,2)+width_coax1,Ant(1,3):Ant(1,3)+ProbeHgt-1+CoaxHgt) = sigma_max;
-sigma_sy(Ant(1,1)-depth_coax0:Ant(1,1)+depth_coax1,Ant(1,2)-width_coax0:Ant(1,2)+width_coax1-1,Ant(1,3):Ant(1,3)+ProbeHgt+CoaxHgt) = sigma_max;
-sigma_sx(Ant(1,1)-depth_coax0:Ant(1,1)+depth_coax1-1,Ant(1,2)-width_coax0:Ant(1,2)+width_coax1,Ant(1,3):Ant(1,3)+ProbeHgt+CoaxHgt) = sigma_max;
 
 if(constSim.mu_r~=1)
     mu_x = ones(extend_dimX,extend_dimY,extend_dimZ);mu_y=mu_x;mu_z=mu_x;
@@ -211,49 +84,17 @@ if(constSim.mu_r~=1)
     mu_y (Ant(1,1)-depth_coax0-1:Ant(1,1)+depth_coax1,Ant(1,2)-width_coax0:Ant(1,2)+width_coax1,Ant(1,3):Ant(1,3)+CoaxHgt-1)=constSim.mu_r;
     mu_z (Ant(1,1)-depth_coax0-1:Ant(1,1)+depth_coax1,Ant(1,2)-width_coax0-1:Ant(1,2)+width_coax1,Ant(1,3):Ant(1,3)+CoaxHgt)=constSim.mu_r;
 end
-UpdateMaterial(P,TypeInt(1),TypeReal(sigma_sx(:)));
-UpdateMaterial(P,TypeInt(2),TypeReal(sigma_sy(:)));
-UpdateMaterial(P,TypeInt(3),TypeReal(sigma_sz(:)));
 
-UpdateMaterial(P,TypeInt(4),TypeReal(eps_infx(:)));
-UpdateMaterial(P,TypeInt(5),TypeReal(eps_infy(:)));
-UpdateMaterial(P,TypeInt(6),TypeReal(eps_infz(:)));
-%clear eps_infx eps_infy sigma_sx sigma_sy sigma_sz
-
-
-
-width=DesignX;
-height=DesignY;
-
-
-PortEnergy=@(x) sum(double(x(:)).^2)/constSim.Z0;
-f=@(x,c) c+x;
-
-filter_1=@(x,c) 1./(x+c);
-filter_1_inv=@(x,c) 1./x-c;
-filter_2=@(x,c) 1./(1-x+c);
-filter_2_inv=@(x,c) 1+c-1./x;
-if(flag_plot==1)
-    %%for plot
-    xx1=[repmat(1:width,1,height+1);repmat(1:width,1,height+1)+1/2;repmat(1:width,1,height+1)+1;repmat(1:width,1,height+1)+1/2];
-    yy1=[reshape(repmat(1:(height+1),width,1),1,width*(height+1));reshape(repmat(1:(height+1),width,1),1,width*(height+1))-1/2;reshape(repmat(1:(height+1),width,1),1,width*(height+1));reshape(repmat(1:(height+1),width,1),1,width*(height+1))+1/2];
-
-    xx2=[repmat(1:(width+1),1,height);repmat(1:(width+1),1,height)+1/2;repmat(1:(width+1),1,height);repmat(1:(width+1),1,height)-1/2];
-    yy2=[reshape(repmat(1:height,(width+1),1),1,height*(width+1));reshape(repmat(1:height,(width+1),1),1,height*(width+1))+1/2;reshape(repmat(1:height,(width+1),1),1,height*(width+1))+1;reshape(repmat(1:height,(width+1),1),1,height*(width+1))+1/2];
-    xx=[xx1,xx2];yy=[yy1,yy2];
-end
-
-sigma_initial=Fmapping(rho0);
-% InitAntCondML(P,TypeInt([SimOri(1)-1-DesignX/2,SimOri(2)-1-DesignY/2,Ant(1,3)-1+ProbeHgt+CoaxHgt]),TypeInt([DesignX,DesignY,0,2]),TypeReal(sigma_initial),TypeInt(IndLayer));
+simFDTD('UpdateMaterial',P,TypeInt(1),TypeReal(sigma_sx(:)));
+simFDTD('UpdateMaterial',P,TypeInt(2),TypeReal(sigma_sy(:)));
+simFDTD('UpdateMaterial',P,TypeInt(3),TypeReal(sigma_sz(:)));
+simFDTD('UpdateMaterial',P,TypeInt(4),TypeReal(eps_infx(:)));
+simFDTD('UpdateMaterial',P,TypeInt(5),TypeReal(eps_infy(:)));
+simFDTD('UpdateMaterial',P,TypeInt(6),TypeReal(eps_infz(:)));
 
 
 
 
-rad=constSim.rad;
-rad_rate=0.75;
-[W1,W2,W3]=filter_weight(rad);
-alpha=8;
-NumOfOper=4;
 
 ReadySimulation(P);
 InitField(P);
@@ -268,7 +109,7 @@ load("2025-09-17_Microstrip_MultiLayer_Sym_Thick_14_0 -2_45_45_200_200_2","xmma_
 
 % for i=1:10:180
 rho_new=xmma_record(120,:);
-% 
+%
 % rho_new1=xmma_record1;
 % rho_new2=xmma_record1;
 % rho_new3=xmma_record1;
@@ -288,14 +129,14 @@ rho_new=reshape(rho_new,[],NumML);
 
 figure(1)
 for i=1:NumML
-subplot(1,NumML,i)
-patch(xx-1,yy-1,(rho_new(:,i)),'EdgeColor','none')
-colormap jet
-colorbar
-caxis([0,1])
-axis equal
-xlim([0,DesignX])
-ylim([0,DesignY])
+    subplot(1,NumML,i)
+    patch(xx-1,yy-1,(rho_new(:,i)),'EdgeColor','none')
+    colormap jet
+    colorbar
+    caxis([0,1])
+    axis equal
+    xlim([0,DesignX])
+    ylim([0,DesignY])
 end
 
 % drawnow

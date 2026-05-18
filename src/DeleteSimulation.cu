@@ -1,8 +1,8 @@
-#include "matlabconfig.h"
+#include "simulation.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 { 
     
-    simFDTD * sim = (simFDTD *) (*(uint64_T*) mxGetData(prhs[0]));   
-    sim -> ~simFDTD();
+    simulation * sim = (simulation *) (*(uint64_T*) mxGetData(prhs[0]));   
+    sim -> ~simulation();
 }

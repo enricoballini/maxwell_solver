@@ -408,11 +408,11 @@ __global__ void GPU_updateE_1D(T *__restrict__ E, const T *__restrict__ H, const
 
 template <typename T>
 __global__ void AdjointSource(T *__restrict__ source_adjoint_GPU, const T *__restrict__ PortSignal_GPU,
-                              const size_t max_TimeSteps)
+                              const size_t max_TimeSteps, const size_t indAnt)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x;
     if (ti < max_TimeSteps)
-        source_adjoint_GPU[ti] = PortSignal_GPU[max_TimeSteps - ti - 1];
+        source_adjoint_GPU[ti+indAnt*max_TimeSteps] = PortSignal_GPU[indAnt*max_TimeSteps + max_TimeSteps - ti - 1];
 }
 
 template <typename T>
