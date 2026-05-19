@@ -340,6 +340,34 @@ __global__ void AddSource_GPU_1D(T *__restrict__ Ez_GPU, const size_t i, const T
 }
 
 template <typename T>
+__global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const size_t Imax, const size_t Jmax, const size_t Kmax,
+                                          const size_t i0, const size_t i1, const size_t j0, const size_t j1,
+                                          const size_t k0, const size_t k1, const T source)
+{
+    if ((i1 < i0) || (j1 < j0) || (k1 < k0))
+        return;
+
+    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t ni = i1 - i0 + 1;
+    const size_t nj = j1 - j0 + 1;
+    const size_t nk = k1 - k0 + 1;
+    const size_t total = ni * nj * nk;
+
+    if (tid < total)
+    {
+        const size_t i = i0 + tid % ni;
+        const size_t j = j0 + (tid / ni) % nj;
+        const size_t k = k0 + tid / (ni * nj);
+
+        if ((i < Imax) && (j < Jmax) && (k < Kmax))
+        {
+            const size_t index = i + j * Imax + k * Imax * Jmax;
+            E_GPU[index] = E_GPU[index] + source;
+        }
+    }
+}
+
+template <typename T>
 __global__ void GPU_updateHPml_1D(const T *__restrict__ E, T *__restrict__ H, T *__restrict__ psi_Hyx_1D_GPU, const T *__restrict__ b_Hx_1D,
                                   const T *__restrict__ c_Hx_1D, const T Che, const T dx, const size_t Imax, const size_t nxPML_1)
 {

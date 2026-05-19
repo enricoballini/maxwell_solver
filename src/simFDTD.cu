@@ -74,13 +74,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         {
             sim->initField();
         }
+        else if (strcmp(op, "addcurrents") == 0)
+        {
+            if (nrhs < 3)
+                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time and indices required.");
+            int *time = (int *)mxGetPr(prhs[2]);
+            int *ind = (int *)mxGetPr(prhs[3]);
+            sim->addCurrents(time, ind);
+        }
         else if (strcmp(op, "readysimulation") == 0)
         {
             sim->readySimulation();
         }
-        else if (strcmp(op, "resetfieldall_1") == 0)
+        else if (strcmp(op, "resetfieldall") == 0)
         {
-            sim->ResetFieldAll_1();
+            sim->ResetFieldAll();
         }
         else if (strcmp(op, "updatee_planewave") == 0)
         {
@@ -95,27 +103,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
                 mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time required.");
             int *time = (int *)mxGetPr(prhs[2]);
             sim->updateH_PlaneWave(time);
-        }
-        else if (strcmp(op, "coaxupdate") == 0)
-        {
-            if (nrhs < 3)
-                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time required.");
-            int *time = (int *)mxGetPr(prhs[2]);
-            sim->coaxUpdate(time);
-        }
-        else if (strcmp(op, "recordforwardfield") == 0)
-        {
-            if (nrhs < 3)
-                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time required.");
-            int *time = (int *)mxGetPr(prhs[2]);
-            sim->recordForwardField(time);
-        }
-        else if (strcmp(op, "recordgpufield") == 0)
-        {
-            if (nrhs < 3)
-                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time required.");
-            int *time = (int *)mxGetPr(prhs[2]);
-            sim->recordGPUField(time);
         }
         else if (strcmp(op, "setconst") == 0)
         {
@@ -193,39 +180,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
             plhs[0] = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxREAL);
             float *Data = (float *)mxGetPr(plhs[0]);
             sim->outputVis(Data, flag);
-        }
-        else if (strcmp(op, "outputvisdouble") == 0)
-        {
-            if (nrhs < 4)
-                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "OutAntSize and flag required.");
-            unsigned int OutAntSize = *((unsigned int *)mxGetData(prhs[2]));
-            int *flag = (int *)mxGetPr(prhs[3]);
-            const mwSize dims[] = {1, OutAntSize};
-            plhs[0] = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
-            double *Data = (double *)mxGetPr(plhs[0]);
-            sim->outputVisDouble(Data, flag[0]);
-        }
-        else if (strcmp(op, "updatefield") == 0)
-        {
-            if (nrhs < 3)
-                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "mode required.");
-            int mode = (int)mxGetScalar(prhs[2]);
-            if (mode == 1)
-            {
-                sim->updateE_All();
-            }
-            else if (mode == 2)
-            {
-                sim->updateE_PML();
-            }
-            else if (mode == 3)
-            {
-                sim->updateH_All();
-            }
-            else
-            {
-                mexErrMsgIdAndTxt("simFDTD:BadMode", "Invalid mode %d. Use 1, 2 or 3.", mode);
-            }
         }
         else
         {
