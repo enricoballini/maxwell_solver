@@ -27,7 +27,6 @@ t  = 0:dt:100;
 
 g = Amax * exp(-(t - t0).^2 / (2*sigma^2));
 
-%% 绘图
 figure;
 plot(t, g/1e3, 'LineWidth', 2);
 xlabel('Time (s)');
