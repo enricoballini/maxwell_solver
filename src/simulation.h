@@ -267,19 +267,19 @@ public:
     if (mode == 1)
     {
       AddSource_GPU_3D_1DThread<<<numBlocks, NumThreads, 0, stream>>>(
-          Ex_GPU, Imax, Jmax, Kmax,
+          Ex_GPU, Cexh_GPU, Imax, Jmax, Kmax,
           i0, i1, j0, j1, k0, k1, source[i]);
     }
     else if (mode == 2)
     {
       AddSource_GPU_3D_1DThread<<<numBlocks, NumThreads, 0, stream>>>(
-          Ey_GPU, Imax, Jmax, Kmax,
+          Ey_GPU,Ceyh_GPU,  Imax, Jmax, Kmax,
           i0, i1, j0, j1, k0, k1, source[i]);
     }
     else if (mode == 3)
     {
       AddSource_GPU_3D_1DThread<<<numBlocks, NumThreads, 0, stream>>>(
-          Ez_GPU, Imax, Jmax, Kmax,
+          Ez_GPU,Cezh_GPU,  Imax, Jmax, Kmax,
           i0, i1, j0, j1, k0, k1, source[i]);
     }
   }

@@ -14,13 +14,13 @@ unit=10^3;
 delX=10*unit;
 delT=0.99*delX/(sqrt(3)*clight);
 fctr=5.5e9;
-timeSteps=30000;
+timeSteps=300000;
 distancePML=10;
 
 
 Amax = 100e3;   % 100 kA
-t0   = 50;      % 峰值时间
-FWHM = 100;     % 宽度
+t0   = 5;      % 峰值时间
+FWHM = 10;     % 宽度
 sigma = FWHM / 4/2.355;
 dt=delT;
 t  = 0:dt:100;
@@ -65,21 +65,36 @@ extend_dimY = constSim.Dim(2)+2*pml_size;
 extend_dimZ = constSim.Dim(3)+2*pml_size;
 SimOri=round([extend_dimX/2,extend_dimY/2,extend_dimZ/2]);
 eps_infx = ones(extend_dimX,extend_dimY,extend_dimZ);
-sigma_sx = zeros(extend_dimX,extend_dimY,extend_dimZ);
+sigma_sx = 0.0000*ones(extend_dimX,extend_dimY,extend_dimZ);
 eps_infy=eps_infx;
 eps_infz=eps_infx;
 sigma_sy=sigma_sx;
 sigma_sz=sigma_sx;
 x1=107+1;
 x2=134+1;
-sigma_sx(1:x1,:,11:17)=0.01586;
-sigma_sx(x2+1:end,:,11:17)=0.001;
+indxy=1:16;
+sigma_sx(1:x1,:,indxy)=0.01586;
+sigma_sx(x2+1:end,:,indxy)=0.001;
+sigma_sx(1:x1,:,17)=0.01586/2;
+sigma_sx(x2+1:end,:,17)=0.001/2;
+
+sigma_sy(1:x1,:,indxy)=0.01586;
+sigma_sy(x2+1:end,:,indxy)=0.001;
+sigma_sy(1:x1,:,17)=0.01586/2;
+sigma_sy(x2+1:end,:,17)=0.001/2;
+
+sigma_sz(1:x1,:,1:16)=0.01586;
+sigma_sz(x2+1:end,:,1:16)=0.001;
+
 fact=1.1;
 for i=x1+1:x2
-    sigma_sx(i,:,:)=0.01586/fact;
+        sigma_sx(i,:,1:16)=0.01586/fact;
+        sigma_sy(i,:,1:16)=0.01586/fact;
+sigma_sx(i,:,17)=0.01586/fact/2;
+sigma_sy(i,:,17)=0.01586/fact/2;
+        sigma_sz(i,:,1:16)=0.01586/fact;
     fact=fact*1.1;
 end
-
 %FDTD
 P = simFDTD('CreateSimulation');
 simFDTD('SetConst',P,TypeReal(freqRes),TypeInt(TimeDim));
@@ -90,18 +105,6 @@ simFDTD('SetSource',P,TypeReal(constSim.source));
 sigma_max=5.8e7;
 constSim.mu_r=1;
 
-Ant(1,1)=constSim.AntLoc(1,1)+pml_size+1;
-Ant(1,2)=constSim.AntLoc(1,2)+pml_size+1;
-Ant(1,3)=constSim.AntLoc(1,3)+pml_size+1;
-
-
-
-if(constSim.mu_r~=1)
-    mu_x = ones(extend_dimX,extend_dimY,extend_dimZ);mu_y=mu_x;mu_z=mu_x;
-    mu_x (Ant(1,1)-depth_coax0:Ant(1,1)+depth_coax1,Ant(1,2)-width_coax0-1:Ant(1,2)+width_coax1,Ant(1,3):Ant(1,3)+CoaxHgt-1)=constSim.mu_r;
-    mu_y (Ant(1,1)-depth_coax0-1:Ant(1,1)+depth_coax1,Ant(1,2)-width_coax0:Ant(1,2)+width_coax1,Ant(1,3):Ant(1,3)+CoaxHgt-1)=constSim.mu_r;
-    mu_z (Ant(1,1)-depth_coax0-1:Ant(1,1)+depth_coax1,Ant(1,2)-width_coax0-1:Ant(1,2)+width_coax1,Ant(1,3):Ant(1,3)+CoaxHgt)=constSim.mu_r;
-end
 
 simFDTD('UpdateMaterial',P,TypeInt(1),TypeReal(sigma_sx(:)));
 simFDTD('UpdateMaterial',P,TypeInt(2),TypeReal(sigma_sy(:)));
@@ -133,11 +136,19 @@ for i=0:timeSteps-1
     simFDTD('UpdateE_PML',P);
     simFDTD('AddCurrents',P,TypeInt([i,2]),TypeInt([9,241,140,140,26,26]));
 
-    if(mod(i,10)==0)
-        aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(3));
+    if(mod(i,1000)==0)
+        aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(1));
         bb=(reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ]));
-        %subplot(3,3,1)
-        imagesc(squeeze(bb(:,:,16))')
+        subplot(3,3,1)
+        imagesc(squeeze(bb(:,:,17))')
+        colorbar
+        axis xy
+        axis square
+        title("Ex--Xsilce"+num2str(i))
+        aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(2));
+        bb=(reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ]));
+        subplot(3,3,2)
+        imagesc(squeeze(bb(:,:,17))')
         colorbar
         axis xy
         axis square

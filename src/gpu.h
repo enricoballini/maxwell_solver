@@ -340,7 +340,7 @@ __global__ void AddSource_GPU_1D(T *__restrict__ Ez_GPU, const size_t i, const T
 }
 
 template <typename T>
-__global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const size_t Imax, const size_t Jmax, const size_t Kmax,
+__global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const T* __restrict__ Cexh_GPU, const size_t Imax, const size_t Jmax, const size_t Kmax,
                                           const size_t i0, const size_t i1, const size_t j0, const size_t j1,
                                           const size_t k0, const size_t k1, const T source)
 {
@@ -362,7 +362,7 @@ __global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const size_t Im
         if ((i < Imax) && (j < Jmax) && (k < Kmax))
         {
             const size_t index = i + j * Imax + k * Imax * Jmax;
-            E_GPU[index] = E_GPU[index] + source;
+            E_GPU[index] = E_GPU[index] - Cexh_GPU[index] *source;
         }
     }
 }
