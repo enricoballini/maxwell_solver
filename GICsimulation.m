@@ -127,7 +127,7 @@ for i=0:timeSteps-1
         aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(1));
         bb=(reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ]));
         subplot(2,1,1)
-        imagesc(squeeze(abs(bb(11:250,11:270,17)))')
+        imagesc(squeeze(bb(11:250,11:270,17))')
         colorbar
         axis xy
         axis square

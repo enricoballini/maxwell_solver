@@ -86,20 +86,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         {
             sim->ResetFieldAll();
         }
-        else if (strcmp(op, "updatee_planewave") == 0)
-        {
-            if (nrhs < 3)
-                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time required.");
-            int *time = (int *)mxGetPr(prhs[2]);
-            sim->updateE_PlaneWave(time);
-        }
-        else if (strcmp(op, "updateh_planewave") == 0)
-        {
-            if (nrhs < 3)
-                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time required.");
-            int *time = (int *)mxGetPr(prhs[2]);
-            sim->updateH_PlaneWave(time);
-        }
+
         else if (strcmp(op, "setconst") == 0)
         {
             if (nrhs < 4)
@@ -139,14 +126,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
             float *mu_z = (float *)mxGetPr(prhs[4]);
             sim->createMu(mu_x, mu_y, mu_z);
         }
-        else if (strcmp(op, "init1d") == 0)
-        {
-            if (nrhs < 4)
-                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "rate and PW_source required.");
-            float *rate = (float *)mxGetPr(prhs[2]);
-            float *PW_source = (float *)mxGetPr(prhs[3]);
-            sim->init1D(rate, PW_source);
-        }
+
         else if (strcmp(op, "updatematerial") == 0)
         {
             if (nrhs < 4)
@@ -155,7 +135,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
             float *values = (float *)mxGetPr(prhs[3]);
             sim->updateMaterial(flag, values);
         }
-       
+
         else if (strcmp(op, "outputant") == 0)
         {
             if (nrhs < 3)
@@ -185,4 +165,3 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     mxFree(op);
 }
-
