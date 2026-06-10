@@ -114,6 +114,7 @@ antdatasize=numAnts*timeSteps;
 simFDTD('UpdateCuda',P);
 
 simFDTD('ResetFieldAll',P);
+tic
 for i=0:timeSteps-1
     simFDTD('UpdateH_All',P);
     simFDTD('UpdateH_PML',P);
@@ -126,7 +127,7 @@ for i=0:timeSteps-1
         aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(1));
         bb=(reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ]));
         subplot(2,1,1)
-        imagesc(squeeze(bb(11:250,11:270,17))')
+        imagesc(squeeze(abs(bb(11:250,11:270,17)))')
         colorbar
         axis xy
         axis square
@@ -139,7 +140,7 @@ for i=0:timeSteps-1
         axis xy
         axis square
         title("Ey--Xsilce"+num2str(i))
-       
+
         % aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(3));
         % bb=(reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ]));
         % subplot(2,2,3)
@@ -153,7 +154,7 @@ for i=0:timeSteps-1
 
 
 end
-
+toc
 
 simFDTD('DeleteSimulation',P);
 
