@@ -121,7 +121,7 @@ for i=0:timeSteps-1
     simFDTD('UpdateE_All',P);
     simFDTD('UpdateE_PML',P);
     %simFDTD('AddCurrents',P,TypeInt([i,2]),TypeInt([1,249,139,139,26,26]));
-    simFDTD('AddCurrents',P,TypeInt([i,1]),TypeInt([1,249,139,139,26,26]));
+    simFDTD('AddCurrents',P,TypeInt([i,1]),TypeInt([11,239,139,139,26,26]));
 
     if(mod(i,1000)==0)
         aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(1));
@@ -144,7 +144,7 @@ for i=0:timeSteps-1
         aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(3));
         bb=(reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ]));
         subplot(2,2,3)
-        imagesc(squeeze(abs(bb(11:250,11:270,17)))')
+        imagesc(squeeze(abs(bb(11:250,11:270,16)))')
         colorbar
         axis xy
         axis square

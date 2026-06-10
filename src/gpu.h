@@ -30,47 +30,6 @@ __global__ void GPU_updateH_Full(T *__restrict__ Hx, T *__restrict__ Hy, T *__re
 }
 
 template <typename T>
-__global__ void coaxUpdateGPU(T *__restrict__ PortSignal_GPU, T *__restrict__ Ex_GPU, T *__restrict__ Ey_GPU, const T *__restrict__ Hx_GPU,
-                              const T *__restrict__ Hy_GPU, const T *__restrict__ source, const size_t time,
-                              const size_t ind, const size_t Imax, const size_t Jmax, const T delX,
-                              const T Z_c, const int depth_coax0, const int depth_coax1, const int width_coax0, const int width_coax1, const int mode)
-{
-    // current[0] = Hx_GPU[ind - (width_coax0 + 1) * Imax] - Hx_GPU[ind + width_coax1 * Imax];
-    // for (int i = -width_coax0; i <= width_coax1; i++)
-    // {
-    //     current[0] = current[0] + Hy_GPU[ind + i * Imax] - Hy_GPU[ind - 1 + i * Imax];
-    // }
-    // current[0] = current[0] * delX;
-
-    T current_temp = 0.0;
-    for (size_t i = -width_coax0; i <= width_coax1; i++)
-    {
-        current_temp = current_temp + (Hy_GPU[ind + depth_coax1 + i * Imax] - Hy_GPU[ind - depth_coax0 - 1 + i * Imax]) * delX;
-    }
-    for (size_t i = -depth_coax0; i <= depth_coax1; i++)
-    {
-        current_temp = current_temp + (Hx_GPU[ind + i - (width_coax0 + 1) * Imax] - Hx_GPU[ind + i + width_coax1 * Imax]) * delX;
-    }
-    T tep;
-
-    tep = (mode == 1) ? (source[time] - current_temp * Z_c) / delX : -current_temp * Z_c / delX;
-    for (size_t i = -width_coax0; i <= width_coax1; i++)
-    {
-        Ex_GPU[ind + i * Imax + depth_coax1] = tep;
-        Ex_GPU[ind - 1 + i * Imax - depth_coax0] = -tep;
-    }
-    for (size_t j = -depth_coax0; j <= depth_coax1; j++)
-    {
-        Ey_GPU[ind + width_coax1 * Imax + j] = tep;
-        Ey_GPU[ind - (1 + width_coax0) * Imax + j] = -tep;
-    }
-
-    PortSignal_GPU[time] = -Z_c * current_temp + tep * delX;
-}
-
-
-
-template <typename T>
 __global__ void copy1dinv(T *__restrict__ E_inv_GPU, const T *__restrict__ Ez_GPU, const size_t Imax, const size_t time)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x;
@@ -94,7 +53,7 @@ __global__ void AddSource_GPU_1D(T *__restrict__ Ez_GPU, const size_t i, const T
 }
 
 template <typename T>
-__global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const T* __restrict__ Cexe_GPU,const T* __restrict__ Cexh_GPU, const T delX, const size_t Imax, const size_t Jmax, const size_t Kmax,
+__global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const T *__restrict__ Cexe_GPU, const T *__restrict__ Cexh_GPU, const T delX, const size_t Imax, const size_t Jmax, const size_t Kmax,
                                           const size_t i0, const size_t i1, const size_t j0, const size_t j1,
                                           const size_t k0, const size_t k1, const T source)
 {
@@ -116,9 +75,8 @@ __global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const T* __rest
         if ((i < Imax) && (j < Jmax) && (k < Kmax))
         {
             const size_t index = i + j * Imax + k * Imax * Jmax;
-            E_GPU[index] = Cexe_GPU[index] * E_GPU[index] - Cexh_GPU[index] * source * delX / delX/delX;///*0.5*(1-cos(2*CUDART_PI_F*i/ni));
-            ///E_GPU[index] = - source ;
-
+            E_GPU[index] = Cexe_GPU[index] * E_GPU[index] - Cexh_GPU[index] * source * delX / delX / delX; ///*0.5*(1-cos(2*CUDART_PI_F*i/ni));
+            /// E_GPU[index] = - source ;
         }
     }
 }
@@ -188,63 +146,6 @@ __global__ void GPU_updateE_1D(T *__restrict__ E, const T *__restrict__ H, const
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x;
     if (ti > 0 && ti < Imax)
         E[ti] = E[ti] + Ceh * (H[ti] - H[ti - 1]);
-}
-
-template <typename T>
-__global__ void AdjointSource(T *__restrict__ source_adjoint_GPU, const T *__restrict__ PortSignal_GPU,
-                              const size_t max_TimeSteps, const size_t indAnt)
-{
-    size_t ti = blockIdx.x * blockDim.x + threadIdx.x;
-    if (ti < max_TimeSteps)
-        source_adjoint_GPU[ti+indAnt*max_TimeSteps] = PortSignal_GPU[indAnt*max_TimeSteps + max_TimeSteps - ti - 1];
-}
-
-template <typename T>
-__global__ void GPU_ReadAndSum_Field(T *__restrict__ E_record, T *__restrict__ E_temp, const T *__restrict__ E, const size_t WidthDesign,
-                                     const size_t HeightDesign, const size_t Ax, const size_t Ay, const size_t Az, const size_t Imax, const size_t Jmax, const size_t time)
-{
-    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-    size_t tk = tid / WidthDesign;
-    size_t tj = tid - tk * WidthDesign;
-    size_t index = Ax + (Ay + tj) * Imax + (Az + tk) * (Imax * Jmax);
-    if (tid < WidthDesign * HeightDesign)
-    {
-        E_record[tid + time * WidthDesign * HeightDesign] = (E[index] + E_temp[tid]) / 2;
-        E_temp[tid] = E[index];
-    }
-    // int tj=blockIdx.x * blockDim.x + threadIdx.x;
-    // int tk=blockIdx.y * blockDim.y + threadIdx.y;
-    // if((tj<WidthDesign)&&(tk<HeightDesign)) {
-    //     E_record[tj+tk*WidthDesign+time*WidthDesign*HeightDesign]=E[Ax + (Ay+tj) * Imax + (Az+tk) * (Imax*Jmax)];}
-}
-
-// template <typename T>
-// __global__ void GPU_ComputeGrad(T *__restrict__ E_record, T *__restrict__ temp, const T *__restrict__ E, const int size, const int max_TimeSteps, const int i)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (ti < size)
-//     {
-//         int index = (max_TimeSteps - i - 1) * size + ti;
-//         temp[ti] = Ey_ant[index] * (Ey_ant_AD[ti + i * size] + Ey_ant_AD[ti + (i + 1) * size]) / 2.0;
-//     }
-// }
-
-template <typename T>
-__global__ void GPU_Read_Ant_Field(T *__restrict__ E_record, const T *__restrict__ E, const size_t WidthDesign,
-                                   const size_t HeightDesign, const size_t Ax, const size_t Ay, const size_t Az, const size_t Imax, const size_t Jmax, const size_t time)
-{
-    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-    size_t tj = tid / WidthDesign;
-    size_t ti = tid - tj * WidthDesign;
-    size_t index = Ax + ti + (Ay + tj) * Imax + Az * (Imax * Jmax);
-    if (tid < WidthDesign * HeightDesign)
-    {
-        E_record[tid + time * WidthDesign * HeightDesign] = E[index];
-    }
-    // int tj=blockIdx.x * blockDim.x + threadIdx.x;
-    // int tk=blockIdx.y * blockDim.y + threadIdx.y;
-    // if((tj<WidthDesign)&&(tk<HeightDesign)) {
-    //     E_record[tj+tk*WidthDesign+time*WidthDesign*HeightDesign]=E[Ax + (Ay+tj) * Imax + (Az+tk) * (Imax*Jmax)];}
 }
 
 ////x-direction plane wave
@@ -671,87 +572,6 @@ __global__ void GPU_updateEz_PlaneWaveZ_X(T *__restrict__ Ez, const T *__restric
     }
 }
 
-// template <typename T>
-// __global__ void ReadCoax(T *__restrict__ PortSignal_GPU, const T *__restrict__ Ex_GPU, size_t ind,
-//                          const int time, const T *__restrict__ current, const T delX,
-//                          T Z_c, T *__restrict__ voltage)
-// {
-//     PortSignal_GPU[time] = -Z_c * current[0] + Ex_GPU[ind] * delX;
-// }
-// //
-
-// template <typename T>
-// __global__ void Current_coax(T *__restrict__ current, const T *__restrict__ Hx_GPU, const T *__restrict__ Hy_GPU, size_t ind, int Imax, int Jmax,
-//                              T delX, int width_coax0, int width_coax1)
-// {
-//     // current[0]=0;
-//     // for(int i= -width_coax0;i<=width_coax1;i++){
-//     //     current[0]=current[0]+Hy_GPU[Ax+ (Ay + i)* Imax + Az * (Imax*Jmax)]-Hy_GPU[(Ax-1) + (Ay +i)* Imax + Az * (Imax*Jmax)];
-//     // }
-//     // current[0]=current[0]+Hx_GPU[Ax + (Ay-1-width_coax0) * Imax + Az * (Imax*Jmax)]-Hx_GPU[Ax + (Ay+width_coax1) * Imax + Az * (Imax*Jmax)];
-//     // current[0]=current[0]*3.1415927/4*delX;
-//     current[0] = 3.1415926535897 / 4.0 * (Hy_GPU[ind] - Hy_GPU[ind - 1] + Hx_GPU[ind - Imax] - Hx_GPU[ind]) * delX;
-// }
-
-// template <typename T>
-// __global__ void GPU_ResetField(T *__restrict__ F, const int size)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (ti < size)
-//         F[ti] = 0.0f;
-// }
-
-// template <typename T>
-// __global__ void GPU_updateHx1(T *__restrict__ Hx, const T *__restrict__ Ez, const T *__restrict__ Ey,
-//                               const T Chxh, const T Chxe, const int Imax, const int Jmax, const int Kmax, const int dim)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int idz = ti / dim;
-//     int idy = (ti - idz * dim) / Imax;
-//     int idx = ti - idz * dim - idy * Imax;
-
-//     __shared__ T Chxh_deivce;
-//     Chxh_deivce = Chxh;
-//     __shared__ T Chxe_device;
-//     Chxe_device = Chxe;
-//     int idEz = ti + Imax;
-//     int idEy = ti + (Imax * Jmax);
-//     if ((idz < Kmax - 1) && (idx < Imax - 1) && (idy < Jmax - 1))
-//         Hx[ti] = Chxh_deivce * Hx[ti] + Chxe_device * (-(Ez[idEz] - Ez[ti]) + (Ey[idEy] - Ey[ti]));
-// }
-// template <typename T>
-// __global__ void GPU_updateHy1(T *__restrict__ Hy, const T *__restrict__ Ex, const T *__restrict__ Ez,
-//                               const T Chyh, const T Chye, const int Imax, const int Jmax, const int Kmax, const int dim)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int idz = ti / dim;
-//     int idy = (ti - idz * dim) / Imax;
-//     int idx = ti - idz * dim - idy * Imax;
-//     int idEx = ti + Imax * Jmax;
-//     int idEz = ti + 1;
-//     if ((idz < Kmax - 1) && (idx < Imax - 1) && (idy < Jmax - 1))
-//         Hy[ti] = Chyh * Hy[ti] + Chye * (-(Ex[idEx] - Ex[ti]) + (Ez[idEz] - Ez[ti]));
-// }
-
-// template <typename T>
-// __global__ void GPU_updateHz1(T *__restrict__ Hz, const T *__restrict__ Ey, const T *__restrict__ Ex,
-//                               const T Chzh, const T Chze, const int Imax, const int Jmax, const int Kmax, const int dim)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int idz = ti / dim;
-//     int idy = (ti - idz * dim) / Imax;
-//     int idx = ti - idz * dim - idy * Imax;
-//     int idEy = ti + 1;
-//     int idEx = ti + Imax;
-//     __shared__ T Chzh_device;
-//     Chzh_device = Chzh;
-//     __shared__ T Chze_device;
-//     Chze_device = Chze;
-//     __syncthreads();
-//     if ((idz < Kmax - 1) && (idx < Imax - 1) && (idy < Jmax - 1))
-//         Hz[ti] = Chzh_device * Hz[ti] + Chze_device * (-(Ey[idEy] - Ey[ti]) + (Ex[idEx] - Ex[ti]));
-// }
-
 template <typename T>
 __global__ void GPU_updateH(T *__restrict__ Hx, T *__restrict__ Hy, T *__restrict__ Hz, const T *__restrict__ Ex, const T *__restrict__ Ey, const T *__restrict__ Ez,
                             const T Chxh, const T Chxe, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t dim)
@@ -778,100 +598,8 @@ __global__ void GPU_updateH(T *__restrict__ Hx, T *__restrict__ Hy, T *__restric
         Hx[ti] = Chxh * Hx[ti] + Chxe * (-(Ez[idEz1] - Ez_ti) + (Ey[idEy1] - Ey_ti));
         Hy[ti] = Chxh * Hy[ti] + Chxe * (-(Ex[idEx2] - Ex_ti) + (Ez[idEz2] - Ez_ti));
         Hz[ti] = Chxh * Hz[ti] + Chxe * (-(Ey[idEy3] - Ey_ti) + (Ex[idEx3] - Ex_ti));
-
-     
     }
 }
-
-// template <typename T>
-// __global__ void GPU_updateHPmlBx1(T *__restrict__ H, const T *__restrict__ E, T *__restrict__ psi_H_1, const T *__restrict__ b_H_1,
-//                                   const T *__restrict__ c_H_1, const int I, const int J, const int K, const T Che, const T d, const int Imax,
-//                                   const int Jmax, const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = I * J;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / I;
-//     int idx = ti - idz * dim_s - idy * I;
-//     int id = idx + idy * Imax + idz * dim;
-//     __shared__ T den_device;
-//     den_device = d;
-//     __shared__ T Che_device;
-//     Che_device = Che;
-//     if ((idz < K - 1) && (idx < I - 1) && (idy < J - 1))
-//     {
-//         psi_H_1[ti] = b_H_1[idx] * psi_H_1[ti] + c_H_1[idx] * (E[id + 1] - E[id]) / den_device;
-//         H[id] = H[id] - Che_device * psi_H_1[ti] * den_device;
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateHPmlBy1(T *__restrict__ H, const T *__restrict__ E, T *__restrict__ psi_H_1, const T *__restrict__ b_H_1,
-//                                   const T *__restrict__ c_H_1, const int I, const int J, const int K, const T Che, const T d, const int Imax,
-//                                   const int Jmax, const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = I * J;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / I;
-//     int idx = ti - idz * dim_s - idy * I;
-//     int id = idx + idy * Imax + idz * dim;
-
-//     __shared__ T den_device;
-//     den_device = d;
-//     __shared__ T Che_device;
-//     Che_device = Che;
-
-//     if ((idz < K - 1) && (idx < I - 1) && (idy < J - 1))
-//     {
-//         psi_H_1[ti] = b_H_1[idy] * psi_H_1[ti] + c_H_1[idy] * (E[id + Imax] - E[id]) / den_device;
-//         H[id] = H[id] - Che_device * psi_H_1[ti] * den_device;
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateHPmlBz1(T *__restrict__ H, const T *__restrict__ E, T *__restrict__ psi_H_1, const T *__restrict__ b_H_1,
-//                                   const T *__restrict__ c_H_1, const int I, const int J, const int K, const T Che, const T d, const int Imax,
-//                                   const int Jmax, const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = I * J;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / I;
-//     int idx = ti - idz * dim_s - idy * I;
-//     int id = idx + idy * Imax + idz * dim;
-//     __shared__ T den_device;
-//     den_device = d;
-//     __shared__ T Che_device;
-//     Che_device = Che;
-//     if ((idz < K - 1) && (idx < I - 1) && (idy < J - 1))
-//     {
-//         psi_H_1[ti] = b_H_1[idz] * psi_H_1[ti] + c_H_1[idz] * (E[id + dim] - E[id]) / den_device;
-//         H[id] = H[id] - Che_device * psi_H_1[ti] * den_device;
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateHPmlTx1(T *__restrict__ Hy, const T *__restrict__ Ez, T *__restrict__ psi_Hyx_2, const T *__restrict__ b_Hx_2,
-//                                   const T *__restrict__ c_Hx_2, const T Chye, const T dx, const int nxPML_2, const int Imax, const int Jmax,
-//                                   const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = nxPML_2 * Jmax;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / nxPML_2;
-//     int idx = ti - idz * dim_s - idy * nxPML_2;
-//     int id = Imax - nxPML_2 + idx + idy * Imax + idz * dim;
-//     if ((idz < Kmax - 1) && (idx < nxPML_2 - 1) && (idy < Jmax - 1))
-//     {
-//         psi_Hyx_2[ti] = b_Hx_2[idx + 1] * psi_Hyx_2[ti] + c_Hx_2[idx + 1] * (Ez[id + 1] - Ez[id]) / dx;
-//         Hy[id] = Hy[id] + Chye * psi_Hyx_2[ti] * dx;
-//     }
-// }
 
 template <typename T>
 __global__ void GPU_updateHPmlX(T *__restrict__ Hy, T *__restrict__ Hz, const T *__restrict__ Ey, const T *__restrict__ Ez, T *__restrict__ psi_Hyx_GPU,
@@ -996,134 +724,6 @@ __global__ void GPU_updateHPmlZ(T *__restrict__ Hx, T *__restrict__ Hy, const T 
     // }
 }
 
-// template <typename T>
-// __global__ void GPU_updateHPmlTy1(T *__restrict__ Hx, const T *__restrict__ Ez, T *__restrict__ psi_Hxy_2, const T *__restrict__ b_Hy_2,
-//                                   const T *__restrict__ c_Hy_2, const T Chxe, const T dy, const int nyPML_2, const int Imax, const int Jmax,
-//                                   const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = nyPML_2 * Imax;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / Imax;
-//     int idx = ti - idz * dim_s - idy * Imax;
-//     int id = idx + (idy + Jmax - nyPML_2) * Imax + idz * dim;
-//     if ((idz < Kmax - 1) && (idx < Imax - 1) && (idy < nyPML_2 - 1))
-//     {
-//         psi_Hxy_2[ti] = b_Hy_2[idy + 1] * psi_Hxy_2[ti] + c_Hy_2[idy + 1] * (Ez[id + Imax] - Ez[id]) / dy;
-//         Hx[id] = Hx[id] - Chxe * psi_Hxy_2[ti] * dy;
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateHPmlTz1(T *__restrict__ Hx, const T *__restrict__ Ey, T *__restrict__ psi_Hxz_2, const T *__restrict__ b_Hz_2,
-//                                   const T *__restrict__ c_Hz_2, const T Chxe, const T dz, const int nzPML_2, const int Imax, const int Jmax,
-//                                   const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = dim;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / Imax;
-//     int idx = ti - idz * dim_s - idy * Imax;
-//     int id = idx + idy * Imax + (idz + Kmax - nzPML_2) * dim;
-//     if ((idz < nzPML_2 - 1) && (idx < Imax - 1) && (idy < Jmax - 1))
-//     {
-//         psi_Hxz_2[ti] = b_Hz_2[idz + 1] * psi_Hxz_2[ti] + c_Hz_2[idz + 1] * (Ey[id + dim] - Ey[id]) / dz;
-//         Hx[id] = Hx[id] + Chxe * psi_Hxz_2[ti] * dz;
-//     }
-// }
-
-template <typename T>
-__global__ void GPU_updateE1(T *__restrict__ Ex, T *__restrict__ Ey, T *__restrict__ Ez, const T *__restrict__ Cexe, const T *__restrict__ Cexh, const T *__restrict__ Ceye, const T *__restrict__ Ceyh,
-                             const T *__restrict__ Ceze, const T *__restrict__ Cezh, const T *__restrict__ Hx, const T *__restrict__ Hy,
-                             const T *__restrict__ Hz, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t dim, T *__restrict__ psi_Eyx_1, T *__restrict__ psi_Ezx_1,
-                             T *__restrict__ psi_Exy_1, T *__restrict__ psi_Ezy_1, T *__restrict__ psi_Exz_1, T *__restrict__ psi_Eyz_1,
-                             const T dx, const T *__restrict__ b_Ex_1, const T *__restrict__ c_Ex_1, const size_t nxPML)
-{
-    size_t ti = blockIdx.x * blockDim.x + threadIdx.x + 1 + Imax * Jmax + Imax;
-    size_t idz = ti / dim;
-    size_t idy = (ti - idz * dim) / Imax;
-    size_t idx = ti - idz * dim - idy * Imax;
-
-    bool cond = (idz < Kmax - 1) && (idx < Imax - 1) && (idy < Jmax - 1) && (idx > 0) && (idy > 0);
-    if (cond)
-    {
-        T dy = dx;
-        T dz = dx;
-
-        size_t nyPML = nxPML;
-        size_t nzPML = nxPML;
-        T Hx_ti = Hx[ti];
-        T Hy_ti = Hy[ti];
-        T Hz_ti = Hz[ti];
-
-        T Hzx_temp = Hz_ti - Hz[ti - 1];
-        T Hyx_temp = Hy_ti - Hy[ti - 1];
-        T Hzy_temp = Hz_ti - Hz[ti - Imax];
-        T Hxy_temp = Hx_ti - Hx[ti - Imax];
-        T Hyz_temp = Hy_ti - Hy[ti - dim];
-        T Hxz_temp = Hx_ti - Hx[ti - dim];
-
-        Ex[ti] = fma(Cexe[ti], Ex[ti], Cexh[ti] * (+Hzy_temp - Hyz_temp));
-        Ey[ti] = fma(Ceye[ti], Ey[ti], Ceyh[ti] * (+Hxz_temp - Hzx_temp));
-        Ez[ti] = fma(Ceze[ti], Ez[ti], Cezh[ti] * (+Hyx_temp - Hxy_temp));
-
-        if (idx <= nxPML - 1)
-        {
-            size_t id = idx + idy * 2 * nxPML + idz * 2 * nxPML * Jmax;
-            psi_Eyx_1[id] = b_Ex_1[idx] * psi_Eyx_1[id] + c_Ex_1[idx] * Hzx_temp / dx;
-            Ey[ti] = Ey[ti] - Ceyh[ti] * psi_Eyx_1[id] * dx;
-
-            psi_Ezx_1[id] = b_Ex_1[idx] * psi_Ezx_1[id] + c_Ex_1[idx] * Hyx_temp / dx;
-            Ez[ti] = Ez[ti] + Cezh[ti] * psi_Ezx_1[id] * dx;
-        }
-        else if (idx > Imax - nxPML - 1)
-        {
-            size_t id1 = idx - (Imax - 2 * nxPML) + idy * 2 * nxPML + idz * 2 * nxPML * Jmax;
-            psi_Eyx_1[id1] = b_Ex_1[idx - (Imax - 2 * nxPML)] * psi_Eyx_1[id1] + c_Ex_1[idx - (Imax - 2 * nxPML)] * Hzx_temp / dx;
-            Ey[ti] = Ey[ti] - Ceyh[ti] * psi_Eyx_1[id1] * dx;
-
-            psi_Ezx_1[id1] = b_Ex_1[idx - (Imax - 2 * nxPML)] * psi_Ezx_1[id1] + c_Ex_1[idx - (Imax - 2 * nxPML)] * Hyx_temp / dx;
-            Ez[ti] = Ez[ti] + Cezh[ti] * psi_Ezx_1[id1] * dx;
-        }
-        if (idy <= nyPML - 1)
-        {
-            size_t id = idx + idy * Imax + idz * Imax * 2 * nyPML;
-            psi_Exy_1[id] = b_Ex_1[idy] * psi_Exy_1[id] + c_Ex_1[idy] * Hzy_temp / dy;
-            Ex[ti] = Ex[ti] + Cexh[ti] * psi_Exy_1[id] * dy;
-            psi_Ezy_1[id] = b_Ex_1[idy] * psi_Ezy_1[id] + c_Ex_1[idy] * Hxy_temp / dy;
-            Ez[ti] = Ez[ti] - Cezh[ti] * psi_Ezy_1[id] * dy;
-        }
-        else if (idy > Jmax - nyPML - 1)
-        {
-            size_t id = idx + (idy - (Jmax - 2 * nyPML)) * Imax + idz * Imax * 2 * nyPML;
-            psi_Exy_1[id] = b_Ex_1[idy - (Jmax - 2 * nyPML)] * psi_Exy_1[id] + c_Ex_1[idy - (Jmax - 2 * nyPML)] * Hzy_temp / dy;
-            Ex[ti] = Ex[ti] + Cexh[ti] * psi_Exy_1[id] * dy;
-            psi_Ezy_1[id] = b_Ex_1[idy - (Jmax - 2 * nyPML)] * psi_Ezy_1[id] + c_Ex_1[idy - (Jmax - 2 * nyPML)] * Hxy_temp / dy;
-            Ez[ti] = Ez[ti] - Cezh[ti] * psi_Ezy_1[id] * dy;
-        }
-
-        if (idz <= nzPML - 1)
-        {
-            size_t id = idx + idy * Imax + idz * dim;
-            psi_Exz_1[id] = b_Ex_1[idz] * psi_Exz_1[id] + c_Ex_1[idz] * Hyz_temp / dz;
-            Ex[ti] = Ex[ti] - Cexh[ti] * psi_Exz_1[id] * dz;
-
-            psi_Eyz_1[id] = b_Ex_1[idz] * psi_Eyz_1[id] + c_Ex_1[idz] * Hxz_temp / dz;
-            Ey[ti] = Ey[ti] + Ceyh[ti] * psi_Eyz_1[id] * dz;
-        }
-        else if (idz > Kmax - nzPML - 1)
-        {
-            size_t id = idx + idy * Imax + (idz - (Kmax - 2 * nzPML)) * dim;
-            psi_Exz_1[id] = b_Ex_1[idz - (Kmax - 2 * nzPML)] * psi_Exz_1[id] + c_Ex_1[idz - (Kmax - 2 * nzPML)] * Hyz_temp / dz;
-            Ex[ti] = Ex[ti] - Cexh[ti] * psi_Exz_1[id] * dz;
-            psi_Eyz_1[id] = b_Ex_1[idz - (Kmax - 2 * nzPML)] * psi_Eyz_1[id] + c_Ex_1[idz - (Kmax - 2 * nzPML)] * Hxz_temp / dz;
-            Ey[ti] = Ey[ti] + Ceyh[ti] * psi_Eyz_1[id] * dz;
-        }
-    }
-}
-
 template <typename T>
 __global__ void GPU_updateE(T *__restrict__ Ex, T *__restrict__ Ey, T *__restrict__ Ez, const T *__restrict__ Cexe, const T *__restrict__ Cexh, const T *__restrict__ Ceye, const T *__restrict__ Ceyh,
                             const T *__restrict__ Ceze, const T *__restrict__ Cezh, const T *__restrict__ Hx, const T *__restrict__ Hy,
@@ -1141,122 +741,25 @@ __global__ void GPU_updateE(T *__restrict__ Ex, T *__restrict__ Ey, T *__restric
     size_t idHz2 = ti - 1;
     size_t idHx3 = ti - Imax;
     size_t idHy3 = ti - 1;
-    if ((idz < Kmax) && (idx < Imax) && (idy < Jmax) && (idx > 0) && (idy > 0) && (idz > 0))
+    T Hx_ti = Hx[ti];
+    T Hy_ti = Hy[ti];
+    T Hz_ti = Hz[ti];
+    if ((idz < Kmax) && (idx < Imax) && (idy < Jmax) && (idx >= 0) && (idy >= 0) && (idz >= 0))
     {
-        T Hx_ti = Hx[ti];
-        T Hy_ti = Hy[ti];
-        T Hz_ti = Hz[ti];
-
-        Ex[ti] = Cexe[ti] * Ex[ti] + Cexh[ti] * (+(Hz_ti - Hz[idHz1]) - (Hy_ti - Hy[idHy1]));
-        Ey[ti] = Ceye[ti] * Ey[ti] + Ceyh[ti] * (+(Hx_ti - Hx[idHx2]) - (Hz_ti - Hz[idHz2]));
-        Ez[ti] = Ceze[ti] * Ez[ti] + Cezh[ti] * (+(Hy_ti - Hy[idHy3]) - (Hx_ti - Hx[idHx3]));
+        if (idy != 0 && idz != 0)
+        {
+            Ex[ti] = Cexe[ti] * Ex[ti] + Cexh[ti] * (+(Hz_ti - Hz[idHz1]) - (Hy_ti - Hy[idHy1]));
+        }
+        if (idx != 0 && idz != 0)
+        {
+            Ey[ti] = Ceye[ti] * Ey[ti] + Ceyh[ti] * (+(Hx_ti - Hx[idHx2]) - (Hz_ti - Hz[idHz2]));
+        }
+        if (idx != 0 && idy != 0)
+        {
+            Ez[ti] = Ceze[ti] * Ez[ti] + Cezh[ti] * (+(Hy_ti - Hy[idHy3]) - (Hx_ti - Hx[idHx3]));
+        }
     }
 }
-
-// template <typename T>
-// __global__ void GPU_updateEx_basic(T *__restrict__ Ex, const T *__restrict__ Cexe, const T *__restrict__ Cexh, const T *__restrict__ Hz,
-//                                    const T *__restrict__ Hy, const int Imax, const int Jmax, const int Kmax, const int dim)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x + 1 + Imax * Jmax + Imax;
-//     int idz = ti / dim;
-//     int idy = (ti - idz * dim) / Imax;
-//     int idx = ti - idz * dim - idy * Imax;
-//     int idHy = ti - dim;
-//     int idHz = ti - Imax;
-//     if ((idz < Kmax - 1) && (idx < Imax - 1) && (idy < Jmax - 1) && (idx > 0) && (idy > 0))
-//     {
-//         Ex[ti] = Cexe[ti] * Ex[ti] + Cexh[ti] * (+(Hz[ti] - Hz[idHz]) - (Hy[ti] - Hy[idHy]));
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateEy_basic(T *__restrict__ Ey, const T *__restrict__ Ceye, const T *__restrict__ Ceyh,
-//                                    const T *__restrict__ Hx, const T *__restrict__ Hz, const int Imax, const int Jmax, const int Kmax, const int dim)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x + 1 + Imax * Jmax + Imax;
-//     int idz = ti / dim;
-//     int idy = (ti - idz * dim) / Imax;
-//     int idx = ti - idz * dim - idy * Imax;
-//     int idHx = ti - dim;
-//     int idHz = ti - 1;
-//     if ((idz < Kmax - 1) && (idx < Imax - 1) && (idy < Jmax - 1) && (idx > 0) && (idy > 0))
-//     {
-//         Ey[ti] = Ceye[ti] * Ey[ti] + Ceyh[ti] * (+(Hx[ti] - Hx[idHx]) - (Hz[ti] - Hz[idHz]));
-//     }
-// }
-// template <typename T>
-// __global__ void GPU_updateEz_basic(T *__restrict__ Ez, const T *__restrict__ Ceze, const T *__restrict__ Cezh, const T *__restrict__ Hy,
-//                                    const T *__restrict__ Hx, const int Imax, const int Jmax, const int Kmax, const int dim)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x + 1 + Imax * Jmax + Imax;
-//     int idz = ti / dim;
-//     int idy = (ti - idz * dim) / Imax;
-//     int idx = ti - idz * dim - idy * Imax;
-//     int idHx = ti - Imax;
-//     int idHy = ti - 1;
-//     if ((idz < Kmax - 1) && (idx < Imax - 1) && (idy < Jmax - 1) && (idx > 0) && (idy > 0))
-//     {
-//         Ez[ti] = Ceze[ti] * Ez[ti] + Cezh[ti] * (+(Hy[ti] - Hy[idHy]) - (Hx[ti] - Hx[idHx]));
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateEPmlBx1(const T *__restrict__ Hz, T *__restrict__ Ey, T *__restrict__ psi_Eyx_1, const T *__restrict__ b_Ex_1,
-//                                   const T *__restrict__ c_Ex_1, const T *__restrict__ Ceyh,
-//                                   const T dx, const int I, const int J, const int K, const T c, const int Imax, const int Jmax, const int Kmax)
-// {
-
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = I * J;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / I;
-//     int idx = ti - idz * dim_s - idy * I;
-//     int id = idx + idy * Imax + idz * dim;
-//     if ((idz < K - 1) && (idz >= 1) && (idx > 0) && (idx <= I - 1) && (idy > 0) && (idy < J - 1))
-//     {
-//         psi_Eyx_1[ti] = b_Ex_1[idx] * psi_Eyx_1[ti] + c_Ex_1[idx] * (Hz[id] - Hz[id - 1]) / dx;
-//         Ey[id] = Ey[id] - c * Ceyh[id] * psi_Eyx_1[ti] * dx;
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateEPmlBy1(const T *__restrict__ Hz, T *__restrict__ Ex, T *__restrict__ psi_Exy_1,
-//                                   const T *__restrict__ b_Ey_1, const T *__restrict__ c_Ey_1, const T *__restrict__ Cexh,
-//                                   const T dy, const int I, const int J, const int K, const int c, const int Imax, const int Jmax, const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = I * J;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / I;
-//     int idx = ti - idz * dim_s - idy * I;
-//     int id = idx + idy * Imax + idz * dim;
-//     if ((idz < K - 1) && (idz >= 1) && (idx < I - 1) && (idx > 0) && (idy > 0) && (idy <= J - 1))
-//     {
-//         psi_Exy_1[ti] = b_Ey_1[idy] * psi_Exy_1[ti] + c_Ey_1[idy] * (Hz[id] - Hz[id - Imax]) / dy;
-//         Ex[id] = Ex[id] + c * Cexh[id] * psi_Exy_1[ti] * dy;
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateEPmlBz1(const T *__restrict__ Hy, T *__restrict__ Ex, T *__restrict__ psi_Exz_1,
-//                                   const T *__restrict__ b_Ez_1, const T *__restrict__ c_Ez_1, const T *__restrict__ Cexh,
-//                                   const T dz, const int I, const int J, const int K, const int c, const int Imax, const int Jmax, const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = I * J;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / I;
-//     int idx = ti - idz * dim_s - idy * I;
-//     int id = idx + idy * Imax + idz * dim;
-//     if ((idz <= K - 1) && (idz >= 1) && (idx < I - 1) && (idx > 0) && (idy < J - 1) && (idy > 0))
-//     {
-//         psi_Exz_1[ti] = b_Ez_1[idz] * psi_Exz_1[ti] + c_Ez_1[idz] * (Hy[id] - Hy[id - dim]) / dz;
-//         Ex[id] = Ex[id] - c * Cexh[id] * psi_Exz_1[ti] * dz;
-//     }
-// }
 
 template <typename T>
 __global__ void GPU_updateEPmlX(const T *__restrict__ Hy, const T *__restrict__ Hz, T *__restrict__ Ey, T *__restrict__ Ez, T *__restrict__ psi_Eyx_1, T *__restrict__ psi_Ezx_1,

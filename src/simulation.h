@@ -615,26 +615,6 @@ public:
         Data[i] = Ez[i];
       }
     }
-    else if (flag[0] == 11)
-    {
-      cudaMemcpyAsync(Ez_1D, Ez_1D_GPU, max_TimeSteps * size_1D * real_size,
-                      cudaMemcpyDeviceToHost, stream);
-      cudaStreamSynchronize(stream);
-      for (size_t i = 0; i < max_TimeSteps * size_1D; i++)
-      {
-        Data[i] = Ez_1D[i];
-      }
-    }
-    else if (flag[0] == 12)
-    {
-      cudaMemcpyAsync(Ez_1D, E_inv_1D_GPU, (size_1D)*real_size,
-                      cudaMemcpyDeviceToHost, stream);
-      cudaStreamSynchronize(stream);
-      for (size_t i = 0; i < size_1D; i++)
-      {
-        Data[i] = Ez_1D[i];
-      }
-    }
   }
 
   void outputAnt(real *antData)
