@@ -974,9 +974,15 @@ public:
     delete[] sig_Hx_PML_2;
     delete[] kappa_Hx_PML_1;
     delete[] kappa_Hx_PML_2;
+    initField();
   }
   void initField()
   {
+    if (init_field == 1)
+    {
+      printf("Field arrays are already initialized.\n");
+      return;
+    } // Avoid reinitialization if already done
     init_field = 1;
     cudaMallocHost(&Ex, IJK_Size * real_size);
     cudaMallocHost(&Ey, IJK_Size * real_size);

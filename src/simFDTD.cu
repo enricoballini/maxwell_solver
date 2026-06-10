@@ -70,10 +70,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         {
             sim->updateCuda();
         }
-        else if (strcmp(op, "initfield") == 0)
-        {
-            sim->initField();
-        }
         else if (strcmp(op, "addcurrents") == 0)
         {
             if (nrhs < 4)
