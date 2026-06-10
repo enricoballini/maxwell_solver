@@ -1,196 +1,6 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-template <typename T>
-__device__ __forceinline__ T fma_custom(T a, T b, T c);
-
-// Specialization for float
-template <>
-__device__ __forceinline__ float fma_custom<float>(float a, float b, float c)
-{
-    return __fmaf_rn(a, b, c); // fused multiply-add, round to nearest
-}
-
-// Specialization for double
-template <>
-__device__ __forceinline__ double fma_custom<double>(double a, double b, double c)
-{
-    return __fma_rn(a, b, c); // fused multiply-add, round to nearest
-}
-
-template <unsigned int blockSize, typename T>
-__device__ void warpReduce(volatile T *sdata, const size_t tid)
-{
-    if (blockSize >= 64)
-        sdata[tid] += sdata[tid + 32];
-    __syncthreads();
-    if (blockSize >= 32)
-        sdata[tid] += sdata[tid + 16];
-    __syncthreads();
-    if (blockSize >= 16)
-        sdata[tid] += sdata[tid + 8];
-    __syncthreads();
-    if (blockSize >= 8)
-        sdata[tid] += sdata[tid + 4];
-    __syncthreads();
-    if (blockSize >= 4)
-        sdata[tid] += sdata[tid + 2];
-    __syncthreads();
-    if (blockSize >= 2)
-        sdata[tid] += sdata[tid + 1];
-    __syncthreads();
-}
-template <unsigned int blockSize, typename T>
-__global__ void sum_reductions(const T *__restrict__ input, T *__restrict__ output, const size_t size)
-{
-    __shared__ T sdata[blockSize];
-    size_t tid = threadIdx.x;
-    size_t i = blockIdx.x * blockDim.x * 2 + threadIdx.x;
-    size_t gridSize = blockSize * 2 * gridDim.x;
-    sdata[tid] = 0;
-    while (i < size)
-    {
-        if (i + blockDim.x < size)
-            sdata[tid] += input[i] + input[i + blockDim.x];
-        else
-            sdata[tid] += input[i];
-        i += gridSize;
-    }
-    __syncthreads();
-    if (tid < 512)
-        sdata[tid] += sdata[tid + 512];
-    __syncthreads();
-    if (tid < 256)
-        sdata[tid] += sdata[tid + 256];
-    __syncthreads();
-    if (tid < 128)
-        sdata[tid] += sdata[tid + 128];
-    __syncthreads();
-    if (tid < 64)
-        sdata[tid] += sdata[tid + 64];
-    __syncthreads();
-    if (tid < 32)
-        warpReduce<blockSize>(sdata, tid);
-    if (tid == 0)
-        output[blockIdx.x] = sdata[0];
-}
-
-template <unsigned int blockSize, typename T>
-__global__ void sum_reduce(const T *__restrict__ input, T *__restrict__ output, const size_t index, const size_t size)
-{
-    __shared__ T sdata[blockSize];
-    size_t tid = threadIdx.x;
-    size_t i = blockIdx.x * blockDim.x * 2 + threadIdx.x;
-    size_t gridSize = blockSize * 2 * gridDim.x;
-    sdata[tid] = 0;
-    while (i < size)
-    {
-        if (i + blockDim.x < size)
-            sdata[tid] += input[i] + input[i + blockDim.x];
-        else
-            sdata[tid] += input[i];
-        i += gridSize;
-    }
-    __syncthreads();
-    if (tid < 512)
-        sdata[tid] += sdata[tid + 512];
-    __syncthreads();
-    if (tid < 256)
-        sdata[tid] += sdata[tid + 256];
-    __syncthreads();
-    if (tid < 128)
-        sdata[tid] += sdata[tid + 128];
-    __syncthreads();
-    if (tid < 64)
-        sdata[tid] += sdata[tid + 64];
-    __syncthreads();
-    if (tid < 32)
-        warpReduce<blockSize>(sdata, tid);
-    if (tid == 0)
-        output[index] = sdata[0];
-}
-
-template <typename T1, typename T2>
-__global__ void computeGradientGPU_Mul(const T1 *__restrict__ E1_ant, const T1 *__restrict__ E1_ant_AD, T2 *__restrict__ output, const size_t ti, const size_t size, const size_t max_TimeSteps)
-{
-    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-    size_t index = (max_TimeSteps - tid - 1) * size + ti;
-    if (tid < max_TimeSteps - 1)
-    {
-        output[tid] = E1_ant[index] * (E1_ant_AD[tid * size + ti] + E1_ant_AD[(tid + 1) * size + ti]) / 2;
-    }
-    else
-    {
-        output[tid] = 0;
-    }
-}
-
-template <unsigned int blockSize, typename T>
-__global__ void PortCurrentGPU(const T *__restrict__ Hx_GPU, const T *__restrict__ Hy_GPU, const size_t ind, const size_t Imax, const size_t Jmax, const T delX,
-                               const size_t depth_coax0, const size_t depth_coax1, const size_t width_coax0, const size_t width_coax1, T *__restrict__ current)
-{
-    __shared__ T sdata[blockSize];
-    size_t tid = threadIdx.x;
-    if (tid < width_coax0 + width_coax1 + 1)
-    {
-        sdata[tid] = (Hy_GPU[ind + depth_coax1 + (tid - width_coax0) * Imax] - Hy_GPU[ind - depth_coax0 - 1 + (tid - width_coax0) * Imax]) * delX;
-    }
-    else
-    {
-        sdata[tid] = 0.0;
-    }
-    __syncthreads();
-    if (tid < depth_coax0 + depth_coax1 + 1)
-    {
-        sdata[tid] = sdata[tid] + (Hx_GPU[ind + (tid - depth_coax0) * Imax - (width_coax0 + 1) * Imax] - Hx_GPU[ind + (tid - depth_coax0) * Imax + width_coax1 * Imax]) * delX;
-    }
-    __syncthreads();
-    if (tid < 512)
-    {
-        sdata[tid] += sdata[tid + 512];
-    }
-    __syncthreads();
-    if (tid < 256)
-    {
-        sdata[tid] += sdata[tid + 256];
-    }
-    __syncthreads();
-    if (tid < 128)
-    {
-        sdata[tid] += sdata[tid + 128];
-    }
-    __syncthreads();
-    if (tid < 64)
-    {
-        sdata[tid] += sdata[tid + 64];
-    }
-    __syncthreads();
-    if (tid < 32)
-        warpReduce<blockSize>(sdata, tid);
-    if (tid == 0)
-        current[0] = sdata[0];
-}
-
-template <typename T>
-__global__ void PortEGPU(T *__restrict__ PortSignal_GPU, T *__restrict__ Ex_GPU, T *__restrict__ Ey_GPU, const T *__restrict__ current,
-                         const T *__restrict__ source, const size_t time, const size_t ind, const size_t Imax, const size_t Jmax, const T delX,
-                         const T Z_c, const int depth_coax0, const int depth_coax1, const int width_coax0, const int width_coax1, const int mode)
-{
-    size_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    T tep = (mode == 1) ? (source[time] - current[0] * Z_c) / delX : -current[0] * Z_c / delX;
-    if (tid < width_coax0 + width_coax1 + 1)
-    {
-        Ex_GPU[ind + (tid - width_coax0) * Imax + depth_coax1] = tep;
-        Ex_GPU[ind - 1 + (tid - width_coax0) * Imax - depth_coax0] = -tep;
-    }
-    if (tid < depth_coax0 + depth_coax1 + 1)
-    {
-        Ey_GPU[ind + width_coax1 * Imax + (tid - depth_coax0)] = tep;
-        Ey_GPU[ind - (1 + width_coax0) * Imax + (tid - depth_coax0)] = -tep;
-    }
-    if (tid == 0)
-        PortSignal_GPU[time] = -Z_c * current[0] + tep * delX;
-}
-
+#include <math_constants.h>
 template <typename T>
 __global__ void GPU_updateH_Full(T *__restrict__ Hx, T *__restrict__ Hy, T *__restrict__ Hz, const T *__restrict__ Ex, const T *__restrict__ Ey, const T *__restrict__ Ez,
                                  const T *__restrict__ Chxe, const T *__restrict__ Chye, const T *__restrict__ Chze, const size_t Imax, const size_t Jmax, const size_t Kmax,
@@ -213,13 +23,9 @@ __global__ void GPU_updateH_Full(T *__restrict__ Hx, T *__restrict__ Hy, T *__re
         T Ey_ti = Ey[ti];
         T Ex_ti = Ex[ti];
 
-        Hx[ti] = fma_custom(Chxe[ti], (-(Ez[idEz1] - Ez_ti) + (Ey[idEy1] - Ey_ti)), Hx[ti]);
-        Hy[ti] = fma_custom(Chye[ti], (-(Ex[idEx2] - Ex_ti) + (Ez[idEz2] - Ez_ti)), Hy[ti]);
-        Hz[ti] = fma_custom(Chze[ti], (-(Ey[idEy3] - Ey_ti) + (Ex[idEx3] - Ex_ti)), Hz[ti]);
-
-        // Hx[ti] = Hx[ti] + Chxe[ti] * (-(Ez[idEz1] - Ez_ti) + (Ey[idEy1] - Ey_ti));
-        // Hy[ti] = Hy[ti] + Chye[ti] * (-(Ex[idEx2] - Ex_ti) + (Ez[idEz2] - Ez_ti));
-        // Hz[ti] = Hz[ti] + Chze[ti] * (-(Ey[idEy3] - Ey_ti) + (Ex[idEx3] - Ex_ti));
+        Hx[ti] = Hx[ti] + Chxe[ti] * (-(Ez[idEz1] - Ez_ti) + (Ey[idEy1] - Ey_ti));
+        Hy[ti] = Hy[ti] + Chye[ti] * (-(Ex[idEx2] - Ex_ti) + (Ez[idEz2] - Ez_ti));
+        Hz[ti] = Hz[ti] + Chze[ti] * (-(Ey[idEy3] - Ey_ti) + (Ex[idEx3] - Ex_ti));
     }
 }
 
@@ -262,59 +68,7 @@ __global__ void coaxUpdateGPU(T *__restrict__ PortSignal_GPU, T *__restrict__ Ex
     PortSignal_GPU[time] = -Z_c * current_temp + tep * delX;
 }
 
-// template <typename T>
-// __device__ T current_calculation(const T *__restrict__ Hx, const T *__restrict__ Hy, T delX, size_t ind, int Imax)
-// {
-//     return 3.1415926535897 / 4.0 * (Hy[ind] - Hy[ind - 1] + Hx[ind - Imax] - Hx[ind]) * delX;
-// }
 
-// template <typename T>
-// __global__ void UpdateSource(T *__restrict__ PortSignal_GPU, T *__restrict__ Ex_GPU, T *__restrict__ Ey_GPU, T *__restrict__ source, int time,
-//                              T *__restrict__ current, size_t ind, int Imax, int Jmax, T delX,
-//                              T Z_c, int width_coax0, int width_coax1, int mode)
-// {
-//     // for(int i= -width_coax0;i<=width_coax1;i++){
-//     //     Ex_GPU[Ax + (Ay+i) * Imax + Az * (Imax*Jmax)] = (source[time]-current[0]*Z_c)/delX;
-//     //     Ex_GPU[Ax -1 + (Ay+i)* Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + (Ay-width_coax0) * Imax + Az * (Imax*Jmax)];}
-//     // for(int i= -width_coax0;i<=width_coax1-1;i++){
-//     //     Ey_GPU[Ax + (Ay+i)* Imax + Az * (Imax*Jmax)] = 0.0f;
-//     // }
-//     // Ey_GPU[Ax + (Ay +width_coax1) * Imax + Az * (Imax*Jmax)] = Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     // Ey_GPU[Ax + (Ay - 1-width_coax0) * Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     T tep;
-//     tep = (mode == 1) ? (source[time] - current[0] * Z_c) / delX : -current[0] * Z_c / delX;
-//     Ex_GPU[ind] = tep;
-//     Ex_GPU[ind - 1] = -tep;
-//     Ey_GPU[ind] = tep;
-//     Ey_GPU[ind - Imax] = -tep;
-//     PortSignal_GPU[time] = -Z_c * current[0] + tep * delX;
-// }
-
-// template <typename T>
-// __global__ void PortUpdate(T *__restrict__ PortSignal_GPU, T *__restrict__ Ex_GPU, T *__restrict__ Ey_GPU, const T *__restrict__ Hx_GPU,
-//                            const T *__restrict__ Hy_GPU, T *__restrict__ source, int time,
-//                            T *__restrict__ current, size_t ind, int Imax, int Jmax, T delX,
-//                            T Z_c, int width_coax0, int width_coax1, int mode)
-// {
-//     current[0] = 3.1415926535897 / 4.0 * (Hy_GPU[ind] - Hy_GPU[ind - 1] + Hx_GPU[ind - Imax] - Hx_GPU[ind]) * delX;
-
-//     // for(int i= -width_coax0;i<=width_coax1;i++){
-//     //     Ex_GPU[Ax + (Ay+i) * Imax + Az * (Imax*Jmax)] = (source[time]-current[0]*Z_c)/delX;
-//     //     Ex_GPU[Ax -1 + (Ay+i)* Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + (Ay-width_coax0) * Imax + Az * (Imax*Jmax)];}
-//     // for(int i= -width_coax0;i<=width_coax1-1;i++){
-//     //     Ey_GPU[Ax + (Ay+i)* Imax + Az * (Imax*Jmax)] = 0.0f;
-//     // }
-//     // Ey_GPU[Ax + (Ay +width_coax1) * Imax + Az * (Imax*Jmax)] = Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     // Ey_GPU[Ax + (Ay - 1-width_coax0) * Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     T tep;
-//     tep = (mode == 1) ? (source[time] - current[0] * Z_c) / delX : -current[0] * Z_c / delX;
-
-//     Ex_GPU[ind] = tep;
-//     Ex_GPU[ind - 1] = -tep;
-//     Ey_GPU[ind] = tep;
-//     Ey_GPU[ind - Imax] = -tep;
-//     PortSignal_GPU[time] = -Z_c * current[0] + tep * delX;
-// }
 
 template <typename T>
 __global__ void copy1dinv(T *__restrict__ E_inv_GPU, const T *__restrict__ Ez_GPU, const size_t Imax, const size_t time)
@@ -340,7 +94,7 @@ __global__ void AddSource_GPU_1D(T *__restrict__ Ez_GPU, const size_t i, const T
 }
 
 template <typename T>
-__global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const T* __restrict__ Cexh_GPU, const size_t Imax, const size_t Jmax, const size_t Kmax,
+__global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const T* __restrict__ Cexe_GPU,const T* __restrict__ Cexh_GPU, const T delX, const size_t Imax, const size_t Jmax, const size_t Kmax,
                                           const size_t i0, const size_t i1, const size_t j0, const size_t j1,
                                           const size_t k0, const size_t k1, const T source)
 {
@@ -362,7 +116,9 @@ __global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const T* __rest
         if ((i < Imax) && (j < Jmax) && (k < Kmax))
         {
             const size_t index = i + j * Imax + k * Imax * Jmax;
-            E_GPU[index] = E_GPU[index] - Cexh_GPU[index] *source;
+            E_GPU[index] = Cexe_GPU[index] * E_GPU[index] - Cexh_GPU[index] * source * delX / delX/delX;///*0.5*(1-cos(2*CUDART_PI_F*i/ni));
+            ///E_GPU[index] = - source ;
+
         }
     }
 }
@@ -1019,13 +775,11 @@ __global__ void GPU_updateH(T *__restrict__ Hx, T *__restrict__ Hy, T *__restric
         T Ey_ti = Ey[ti];
         T Ex_ti = Ex[ti];
 
-        // Hx[ti] = Chxh * Hx[ti] + Chxe * (-(Ez[idEz1] - Ez_ti) + (Ey[idEy1] - Ey_ti));
-        // Hy[ti] = Chxh * Hy[ti] + Chxe * (-(Ex[idEx2] - Ex_ti) + (Ez[idEz2] - Ez_ti));
-        // Hz[ti] = Chxh * Hz[ti] + Chxe * (-(Ey[idEy3] - Ey_ti) + (Ex[idEx3] - Ex_ti));
+        Hx[ti] = Chxh * Hx[ti] + Chxe * (-(Ez[idEz1] - Ez_ti) + (Ey[idEy1] - Ey_ti));
+        Hy[ti] = Chxh * Hy[ti] + Chxe * (-(Ex[idEx2] - Ex_ti) + (Ez[idEz2] - Ez_ti));
+        Hz[ti] = Chxh * Hz[ti] + Chxe * (-(Ey[idEy3] - Ey_ti) + (Ex[idEx3] - Ex_ti));
 
-        Hx[ti] = fma_custom(Chxh, Hx[ti], Chxe * (-(Ez[idEz1] - Ez_ti) + (Ey[idEy1] - Ey_ti)));
-        Hy[ti] = fma_custom(Chxh, Hy[ti], Chxe * (-(Ex[idEx2] - Ex_ti) + (Ez[idEz2] - Ez_ti)));
-        Hz[ti] = fma_custom(Chxh, Hz[ti], Chxe * (-(Ey[idEy3] - Ey_ti) + (Ex[idEx3] - Ex_ti)));
+     
     }
 }
 
@@ -1393,12 +1147,9 @@ __global__ void GPU_updateE(T *__restrict__ Ex, T *__restrict__ Ey, T *__restric
         T Hy_ti = Hy[ti];
         T Hz_ti = Hz[ti];
 
-        Ex[ti] = fma_custom(Cexe[ti], Ex[ti], Cexh[ti] * ((Hz_ti - Hz[idHz1]) - (Hy_ti - Hy[idHy1])));
-        Ey[ti] = fma_custom(Ceye[ti], Ey[ti], Ceyh[ti] * (+(Hx_ti - Hx[idHx2]) - (Hz_ti - Hz[idHz2])));
-        Ez[ti] = fma_custom(Ceze[ti], Ez[ti], Cezh[ti] * (+(Hy_ti - Hy[idHy3]) - (Hx_ti - Hx[idHx3])));
-        // Ex[ti] = Cexe[ti] * Ex[ti] + Cexh[ti] * (+(Hz_ti - Hz[idHz1]) - (Hy_ti - Hy[idHy1]));
-        // Ey[ti] = Ceye[ti] * Ey[ti] + Ceyh[ti] * (+(Hx_ti - Hx[idHx2]) - (Hz_ti - Hz[idHz2]));
-        // Ez[ti] = Ceze[ti] * Ez[ti] + Cezh[ti] * (+(Hy_ti - Hy[idHy3]) - (Hx_ti - Hx[idHx3]));
+        Ex[ti] = Cexe[ti] * Ex[ti] + Cexh[ti] * (+(Hz_ti - Hz[idHz1]) - (Hy_ti - Hy[idHy1]));
+        Ey[ti] = Ceye[ti] * Ey[ti] + Ceyh[ti] * (+(Hx_ti - Hx[idHx2]) - (Hz_ti - Hz[idHz2]));
+        Ez[ti] = Ceze[ti] * Ez[ti] + Cezh[ti] * (+(Hy_ti - Hy[idHy3]) - (Hx_ti - Hx[idHx3]));
     }
 }
 
@@ -1611,125 +1362,3 @@ __global__ void GPU_updateEPmlZ(const T *__restrict__ Hx, const T *__restrict__ 
     //     Ey[id] = Ey[id] + Ceyh[id] * psi_Eyz_1[ti] * dz;
     // }
 }
-
-// template <typename T>
-// __global__ void GPU_updateEPmlTx1(const T *__restrict__ Hz, T *__restrict__ Ey, T *__restrict__ psi_Eyx_2, const T *__restrict__ b_Ex_2,
-//                                   const T *__restrict__ c_Ex_2, const T *__restrict__ Ceyh, const T dx, const int nxPML_2, const int c,
-//                                   const int Imax, const int Jmax, const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = nxPML_2 * Jmax;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / nxPML_2;
-//     int idx = ti - idz * dim_s - idy * nxPML_2;
-//     int id = idx + Imax - nxPML_2 + idy * Imax + idz * dim;
-
-//     if ((idz < Kmax - 1) && (idz >= 1) && (idx < nxPML_2 - 1) && (idy < Jmax - 1) && (idy > 0))
-//     {
-//         psi_Eyx_2[ti] = b_Ex_2[idx] * psi_Eyx_2[ti] + c_Ex_2[idx] * (Hz[id] - Hz[id - 1]) / dx;
-//         Ey[id] = Ey[id] - c * Ceyh[id] * psi_Eyx_2[ti] * dx;
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateEPmlTy1(const T *__restrict__ Hz, T *__restrict__ Ex, T *__restrict__ psi_Exy_2, const T *__restrict__ b_Ey_2,
-//                                   const T *__restrict__ c_Ey_2, const T *__restrict__ Cexh, const T dy, const int nyPML_2, const int c,
-//                                   const int Imax, const int Jmax, const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = Imax * nyPML_2;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / Imax;
-//     int idx = ti - idz * dim_s - idy * Imax;
-//     int id = idx + (idy + Jmax - nyPML_2) * Imax + idz * dim;
-//     if ((idz < Kmax - 1) && (idz >= 1) && (idx < Imax - 1) && (idx > 0) && (idy < nyPML_2 - 1))
-//     {
-//         psi_Exy_2[ti] = b_Ey_2[idy] * psi_Exy_2[ti] + c_Ey_2[idy] * (Hz[id] - Hz[id - Imax]) / dy;
-//         Ex[id] = Ex[id] + c * Cexh[id] * psi_Exy_2[ti] * dy;
-//     }
-// }
-
-// template <typename T>
-// __global__ void GPU_updateEPmlTz1(const T *__restrict__ Hy, T *__restrict__ Ex, T *__restrict__ psi_Exz_2, const T *__restrict__ b_Ez_2,
-//                                   const T *__restrict__ c_Ez_2, const T *__restrict__ Cexh, const T dz, const int nzPML_2,
-//                                   const int c, const int Imax, const int Jmax, const int Kmax)
-// {
-//     int ti = blockIdx.x * blockDim.x + threadIdx.x;
-//     int dim = Imax * Jmax;
-//     int dim_s = dim;
-//     int idz = ti / dim_s;
-//     int idy = (ti - idz * dim_s) / Imax;
-//     int idx = ti - idz * dim_s - idy * Imax;
-//     int id = idx + idy * Imax + (idz + Kmax - nzPML_2) * dim;
-//     if ((idz < nzPML_2 - 1) && (idx < Imax - 1) && (idx > 0) && (idy < Jmax - 1) && (idy > 0))
-//     {
-//         psi_Exz_2[ti] = b_Ez_2[idz] * psi_Exz_2[ti] + c_Ez_2[idz] * (Hy[id] - Hy[id - dim]) / dz;
-//         Ex[id] = Ex[id] - c * Cexh[id] * psi_Exz_2[ti] * dz;
-//     }
-// }
-
-// template <typename T>
-// __global__ void AddSource_coax1(T *__restrict__ Ex_GPU, T *__restrict__ Ey_GPU, T source, T *__restrict__ current,
-//                                 int Ax, int Ay, int Az, int Imax, int Jmax, T delX,
-//                                 T Z_c, int width_coax0, int width_coax1, T *__restrict__ voltage, T cons, T *PortSignal_GPU, int time)
-// {
-//     // voltage[1]=(source-current[0]*Z_c+voltage[0]*(-0.5f+Z_c*cons))/(0.5f+Z_c*cons);
-//     // for(int i= -width_coax0;i<=width_coax1;i++){
-//     //     Ex_GPU[Ax + (Ay+i) * Imax + Az * (Imax*Jmax)] =voltage[1]/delX;
-//     //     Ex_GPU[Ax -1 + (Ay+i) * Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + (Ay-width_coax0) * Imax + Az * (Imax*Jmax)];}
-//     // for(int i= -width_coax0;i<=width_coax1-1;i++){
-//     //     Ey_GPU[Ax + (Ay+i)* Imax + Az * (Imax*Jmax)] = 0.0f;
-//     // }
-//     // Ey_GPU[Ax + (Ay +width_coax1)* Imax + Az * (Imax*Jmax)] = Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     // Ey_GPU[Ax + (Ay - 1-width_coax0) * Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     // PortSignal_GPU[time]= (voltage[1]+voltage[0])/2.0f-Z_c*(current[0]+cons*(voltage[1]-voltage[0]));
-//     //     voltage[0]=voltage[1];
-//     voltage[1] = (source - current[0] * Z_c + voltage[0] * (-0.5f + Z_c * cons)) / (0.5f + Z_c * cons);
-//     Ex_GPU[Ax + Ay * Imax + Az * Imax * Jmax] = voltage[1] / delX;
-//     Ex_GPU[Ax - 1 + Ay * Imax + Az * Imax * Jmax] = -Ex_GPU[Ax + Ay * Imax + Az * Imax * Jmax];
-
-//     Ey_GPU[Ax + Ay * Imax + Az * (Imax * Jmax)] = Ex_GPU[Ax + Ay * Imax + Az * (Imax * Jmax)];
-//     Ey_GPU[Ax + (Ay - 1) * Imax + Az * (Imax * Jmax)] = -Ex_GPU[Ax + Ay * Imax + Az * (Imax * Jmax)];
-//     PortSignal_GPU[time] = (voltage[1] + voltage[0]) / 2.0f - Z_c * (current[0] + cons * (voltage[1] - voltage[0]));
-//     voltage[0] = voltage[1];
-// }
-
-// template <typename T>
-// __global__ void AddSource_coax(T *__restrict__ Ex_GPU, T *__restrict__ Ey_GPU, T source, T *__restrict__ current, int ind, int Imax, int Jmax, T delX,
-//                                T Z_c, int width_coax0, int width_coax1, T *__restrict__ voltage)
-// {
-//     voltage[0] = source - current[0] * Z_c;
-//     // for(int i= -width_coax0;i<=width_coax1;i++){
-//     //     Ex_GPU[Ax + (Ay+i) * Imax + Az * (Imax*Jmax)] =(source-current[0]*Z_c)/delX;
-//     //     Ex_GPU[Ax -1 + (Ay+i) * Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + (Ay-width_coax0) * Imax + Az * (Imax*Jmax)];}
-//     // for(int i= -width_coax0;i<=width_coax1-1;i++){
-//     //     Ey_GPU[Ax + (Ay+i)* Imax + Az * (Imax*Jmax)] = 0.0f;
-//     // }
-//     // Ey_GPU[Ax + (Ay +width_coax1)* Imax + Az * (Imax*Jmax)] = Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     // Ey_GPU[Ax + (Ay - 1-width_coax0) * Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     Ex_GPU[ind] = voltage[0] / delX;
-//     Ex_GPU[ind - 1] = -Ex_GPU[ind];
-//     Ey_GPU[ind] = Ex_GPU[ind];
-//     Ey_GPU[ind - Imax] = -Ex_GPU[ind];
-// }
-
-// template <typename T>
-// __global__ void AddSource_coax_GPU(T *__restrict__ Ex_GPU, T *__restrict__ Ey_GPU, T *__restrict__ source, int time,
-//                                    T *__restrict__ current, size_t ind, int Imax, int Jmax, T delX,
-//                                    T Z_c, int width_coax0, int width_coax1)
-// {
-//     // for(int i= -width_coax0;i<=width_coax1;i++){
-//     //     Ex_GPU[Ax + (Ay+i) * Imax + Az * (Imax*Jmax)] = (source[time]-current[0]*Z_c)/delX;
-//     //     Ex_GPU[Ax -1 + (Ay+i)* Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + (Ay-width_coax0) * Imax + Az * (Imax*Jmax)];}
-//     // for(int i= -width_coax0;i<=width_coax1-1;i++){
-//     //     Ey_GPU[Ax + (Ay+i)* Imax + Az * (Imax*Jmax)] = 0.0f;
-//     // }
-//     // Ey_GPU[Ax + (Ay +width_coax1) * Imax + Az * (Imax*Jmax)] = Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     // Ey_GPU[Ax + (Ay - 1-width_coax0) * Imax + Az * (Imax*Jmax)] = -Ex_GPU[Ax + Ay * Imax + Az * (Imax*Jmax)];
-//     Ex_GPU[ind] = (source[time] - current[0] * Z_c) / delX;
-//     Ex_GPU[ind - 1] = -Ex_GPU[ind];
-//     Ey_GPU[ind] = Ex_GPU[ind];
-//     Ey_GPU[ind - Imax] = -Ex_GPU[ind];
-// }

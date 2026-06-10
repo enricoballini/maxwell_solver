@@ -76,7 +76,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         }
         else if (strcmp(op, "addcurrents") == 0)
         {
-            if (nrhs < 3)
+            if (nrhs < 4)
                 mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time and indices required.");
             int *time = (int *)mxGetPr(prhs[2]);
             int *ind = (int *)mxGetPr(prhs[3]);

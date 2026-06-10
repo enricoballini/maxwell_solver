@@ -165,7 +165,7 @@ public:
     cudaMalloc(&b_H_1D, 2 * pml_size * real_size);
     cudaMalloc(&c_H_1D, 2 * pml_size * real_size);
     cudaMalloc(&b_E_1D, 2 * pml_size * real_size);
-    +cudaMalloc(&c_E_1D, 2 * pml_size * real_size);
+    cudaMalloc(&c_E_1D, 2 * pml_size * real_size);
     cudaMemcpyAsync(b_H_1D, b_Hx_1, 2 * pml_size * real_size,
                     cudaMemcpyHostToDevice, stream);
     cudaMemcpyAsync(c_H_1D, c_Hx_1, 2 * pml_size * real_size,
@@ -267,19 +267,19 @@ public:
     if (mode == 1)
     {
       AddSource_GPU_3D_1DThread<<<numBlocks, NumThreads, 0, stream>>>(
-          Ex_GPU, Cexh_GPU, Imax, Jmax, Kmax,
+          Ex_GPU, Cexe_GPU, Cexh_GPU, delX, Imax, Jmax, Kmax,
           i0, i1, j0, j1, k0, k1, source[i]);
     }
     else if (mode == 2)
     {
       AddSource_GPU_3D_1DThread<<<numBlocks, NumThreads, 0, stream>>>(
-          Ey_GPU,Ceyh_GPU,  Imax, Jmax, Kmax,
+          Ey_GPU, Ceye_GPU, Ceyh_GPU, delX, Imax, Jmax, Kmax,
           i0, i1, j0, j1, k0, k1, source[i]);
     }
     else if (mode == 3)
     {
       AddSource_GPU_3D_1DThread<<<numBlocks, NumThreads, 0, stream>>>(
-          Ez_GPU,Cezh_GPU,  Imax, Jmax, Kmax,
+          Ez_GPU, Ceze_GPU, Cezh_GPU, delX, Imax, Jmax, Kmax,
           i0, i1, j0, j1, k0, k1, source[i]);
     }
   }
@@ -639,13 +639,20 @@ public:
 
   void outputAnt(real *antData)
   {
-    cudaMemcpyAsync(PortSignal, PortSignal_GPU,
-                    (numAnt * max_TimeSteps) * real_size,
-                    cudaMemcpyDeviceToHost, stream);
-    cudaStreamSynchronize(stream);
-    for (size_t i = 0; i < numAnt * max_TimeSteps; i++)
+    if (init_antenna == 1)
     {
-      antData[i] = PortSignal[i];
+      cudaMemcpyAsync(PortSignal, PortSignal_GPU,
+                      (numAnt * max_TimeSteps) * real_size,
+                      cudaMemcpyDeviceToHost, stream);
+      cudaStreamSynchronize(stream);
+      for (size_t i = 0; i < numAnt * max_TimeSteps; i++)
+      {
+        antData[i] = PortSignal[i];
+      }
+    }
+    else
+    {
+      std::cerr << "Antenna data is not initialized." << std::endl;
     }
   }
 
@@ -963,13 +970,16 @@ public:
                     cudaMemcpyHostToDevice, stream);
 
     //////Initialize arrays for antenna record
-    cudaMallocHost(&PortSignal,
-                   numAnt * max_TimeSteps *
-                       real_size); // Pinned memory for asynchronous copy
-    std::fill(PortSignal, PortSignal + numAnt * max_TimeSteps, 0.0);
-    cudaMalloc((void **)&PortSignal_GPU, (numAnt * max_TimeSteps) * real_size);
-    cudaMemsetAsync(PortSignal_GPU, 0, (numAnt * max_TimeSteps) * real_size,
-                    stream);
+    if (init_antenna == 1)
+    {
+      cudaMallocHost(&PortSignal,
+                     numAnt * max_TimeSteps *
+                         real_size); // Pinned memory for asynchronous copy
+      std::fill(PortSignal, PortSignal + numAnt * max_TimeSteps, 0.0);
+      cudaMalloc((void **)&PortSignal_GPU, (numAnt * max_TimeSteps) * real_size);
+      cudaMemsetAsync(PortSignal_GPU, 0, (numAnt * max_TimeSteps) * real_size,
+                      stream);
+    }
 
     ///////relase memory//////////
     delete[] alpha_Ex_PML_1;
@@ -1226,10 +1236,10 @@ public:
       cudaFree(Cexh_GPU);
       cudaFree(Ceyh_GPU);
       cudaFree(Cezh_GPU);
-      cudaFree(b_Ex_1);
-      cudaFree(b_Ex_2);
-      cudaFree(c_Ex_2);
-      cudaFree(c_Ex_1);
+      cudaFreeHost(b_Ex_1);
+      cudaFreeHost(b_Ex_2);
+      cudaFreeHost(c_Ex_2);
+      cudaFreeHost(c_Ex_1);
       cudaFree(b_Ex_GPU);
       cudaFree(c_Ex_GPU);
 
@@ -1242,8 +1252,8 @@ public:
       cudaFree(c_Hx_GPU);
 
       // Uniform Mesh
-      cudaFree(den_ex);
-      cudaFree(den_hx);
+      cudaFreeHost(den_ex);
+      cudaFreeHost(den_hx);
 
       // Non-Uniform Mesh
       if (FDTD_UNIFORM_MESH != 1)
@@ -1253,9 +1263,11 @@ public:
         cudaFree(den_hy);
         cudaFree(den_hz);
       }
-
-      cudaFree(PortSignal);
-      cudaFree(PortSignal_GPU);
+      if (init_antenna == 1)
+      {
+        cudaFree(PortSignal);
+        cudaFree(PortSignal_GPU);
+      }
     }
     /// 1D
     if (init_1D == 1)
