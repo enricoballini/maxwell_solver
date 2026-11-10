@@ -5,4 +5,4 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=output_2.txt
 
-apptainer exec "$HOME/container_gpu.sif" python3 -u invert_matrices.py
+apptainer exec "$HOME/container_gpu.sif" python3 -u "$HOME/work_1/maxwell_solver/invert_matrices.py"
