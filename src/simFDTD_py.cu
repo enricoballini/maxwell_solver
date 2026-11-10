@@ -12,6 +12,8 @@ extern "C"
     void simFDTD_updatee_pml(void *sim) { ((simulation *)sim)->updateE_PML(); }
     void simFDTD_updateh_pml(void *sim) { ((simulation *)sim)->updateH_PML(); }
     void simFDTD_updatecuda(void *sim) { ((simulation *)sim)->updateCuda(); }
+    // InitField: removed from simFDTD.cu in commit 48b7151, still called by highfrequency.m/.py
+    void simFDTD_initfield(void *sim) { ((simulation *)sim)->initField(); }
     void simFDTD_addcurrents(void *sim, int *time, int *ind) { ((simulation *)sim)->addCurrents(time, ind); }
     void simFDTD_readysimulation(void *sim) { ((simulation *)sim)->readySimulation(); }
     void simFDTD_resetfieldall(void *sim) { ((simulation *)sim)->ResetFieldAll(); }

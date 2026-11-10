@@ -1,6 +1,6 @@
-# Python counterpart of the MEX gateway simFDTD.cu: same operation strings, same argument
-# checks, same outputs. It calls the functions in libsimFDTD.so (built by Compile.py from
-# simFDTD_py.cu) through ctypes.
+# Python counterpart of the MEX gateway simFDTD.cu: same operation strings (plus InitField,
+# see below), same argument checks, same outputs. It calls the functions in libsimFDTD.so
+# (built by Compile.py from simFDTD_py.cu) through ctypes.
 #
 # Like the MEX gateway, the arrays are passed to C as raw pointers without type conversion,
 # so the caller must pass int32/single arrays where the gateway expects int/float
@@ -13,7 +13,7 @@ import numpy as np
 _lib = ctypes.CDLL(os.path.join(os.path.dirname(os.path.abspath(__file__)), "libsimFDTD.so"))
 _lib.simFDTD_createsimulation.restype = ctypes.c_void_p
 for _name, _nptr in [("deletesimulation", 1), ("updatee_all", 1), ("updateh_all", 1),
-                     ("updatee_pml", 1), ("updateh_pml", 1), ("updatecuda", 1),
+                     ("updatee_pml", 1), ("updateh_pml", 1), ("updatecuda", 1), ("initfield", 1),
                      ("addcurrents", 3), ("readysimulation", 1), ("resetfieldall", 1),
                      ("updatee_planewave", 2), ("updateh_planewave", 2), ("setconst", 3),
                      ("setsource", 2), ("updatesource", 2), ("setantennalocations", 2),
@@ -65,6 +65,12 @@ def simFDTD(*prhs):
         _lib.simFDTD_updateh_pml(sim)
     elif op == "updatecuda":
         _lib.simFDTD_updatecuda(sim)
+    elif op == "initfield":
+        # Removed from the MEX gateway in commit 48b7151, when ReadySimulation started to call
+        # initField() itself. Kept here so that highfrequency.py runs as highfrequency.m did with
+        # a MEX built before that commit; after ReadySimulation it only prints that the field
+        # arrays are already initialized.
+        _lib.simFDTD_initfield(sim)
     elif op == "addcurrents":
         if nrhs < 4:
             _mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time and indices required.")
