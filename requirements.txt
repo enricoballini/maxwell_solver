@@ -1,0 +1,5 @@
+# Python dependencies of the .py scripts (tested with numpy 2.5.4, matplotlib 3.11.2).
+# numpy >= 2 is needed for the float32 arithmetic in CreateSource.py (NEP 50 promotion rules).
+# Building src/libsimFDTD.so with src/Compile.py also needs the CUDA toolkit (nvcc), which is not pip-installable.
+numpy>=2.0
+matplotlib>=3.3
