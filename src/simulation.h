@@ -6,7 +6,9 @@
 #include "gpu.h"
 #include <iostream>
 #include <math.h>
+#ifdef MATLAB_MEX_FILE // defined by mex/mexcuda; the Python build (src/Compile.py) does not use MATLAB
 #include <mex.h>
+#endif
 #include <omp.h>
 #include <stdio.h>
 #ifndef M_PI

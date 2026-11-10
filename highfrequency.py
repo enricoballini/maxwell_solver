@@ -55,7 +55,7 @@ plt.close('all')
 
 
 
-sys.path[0:0] = [p for p,_,_ in os.walk(".")] + [p for p,_,_ in os.walk("../Functions")]  # addpath(genpath("."),genpath("../Functions"))
+sys.path[0:0] = [p for p,_,_ in os.walk(".") if "venv" not in p.split(os.sep)] + [p for p,_,_ in os.walk("../Functions")]  # addpath(genpath("."),genpath("../Functions")), skipping venv: its folders would shadow Python modules
 ###optimization parameters initialization
 clight=299792458
 mu0=4*np.pi*1e-7

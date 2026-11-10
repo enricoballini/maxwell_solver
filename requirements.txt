@@ -1,5 +1,9 @@
-# Python dependencies of the .py scripts (tested with numpy 2.5.4, matplotlib 3.11.2).
+# Python dependencies of the .py scripts and of src/Compile.py.
+# Tested with numpy 2.5.4, matplotlib 3.11.2, PyQt6 6.12.0, cuda-toolkit 13.2.2 (Python 3.12).
 # numpy >= 2 is needed for the float32 arithmetic in CreateSource.py (NEP 50 promotion rules).
-# Building src/libsimFDTD.so with src/Compile.py also needs the CUDA toolkit (nvcc), which is not pip-installable.
 numpy>=2.0
 matplotlib>=3.3
+# Qt backend, so matplotlib can open plot windows also when Python has no tkinter.
+PyQt6
+# CUDA compiler (nvcc) for src/Compile.py, used when no nvcc is on PATH. CUDA 13 needs NVIDIA driver >= 580.
+cuda-toolkit[nvcc,cudart]==13.2.*
