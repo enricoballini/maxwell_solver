@@ -4,6 +4,7 @@ import sys
 import time
 from types import SimpleNamespace
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -52,6 +53,8 @@ reset_gpuDevice()
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 # clear
 plt.close("all")
+matplotlib.use("Agg")  # never open plot windows, only save the figures
+os.makedirs("figures", exist_ok=True)
 
 
 sys.path[0:0] = [
@@ -172,6 +175,7 @@ for i in range(0, timeSteps):
     simFDTD("AddCurrents", P, TypeInt([i, 1]), TypeInt([1, 249, 139, 139, 26, 26]))
 
     if np.mod(i, 1000) == 0:
+        print(f"step {i}/{timeSteps}, elapsed {time.time() - tic:.1f} s", flush=True)
         aa = simFDTD(
             "OutputVis",
             P,
@@ -208,8 +212,7 @@ for i in range(0, timeSteps):
         # plt.gca().invert_yaxis()
         # plt.gca().set_box_aspect(1)
         # plt.title("Ez--Xsilce"+str(i))
-        plt.draw()
-        plt.pause(0.1)
+        plt.savefig(f"figures/Ex_Ey_{i:06d}.pdf")
 
 
 print("Elapsed time is %f seconds." % (time.time() - tic))  # toc
@@ -217,5 +220,3 @@ print("Elapsed time is %f seconds." % (time.time() - tic))  # toc
 simFDTD("DeleteSimulation", P)
 
 reset_gpuDevice()
-
-plt.show()  # MATLAB keeps the figures open after the script ends
