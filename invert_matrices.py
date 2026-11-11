@@ -108,26 +108,24 @@ if __name__ == "__main__":
         name, tflops = gpu
         print(f"\nGPU {name}: product of two {M} x {M} matrices, repeated for {SECONDS} s per precision")
         for dtype, speed in tflops.items():
-            print(f"{dtype:>9}: {speed:6.2f} TFLOPS")
-        print(f"float64 is {tflops['float32'] / tflops['float64']:.0f} times slower than float32")
+            print(f"  {dtype}: {round(speed, 2)} TFLOPS")
+        print(f"float64 is {round(tflops['float32'] / tflops['float64'])} times slower than float32")
     else:
         print("\nNo GPU in this job: GPU part skipped.")
 
     print(f"\nCPU: product of two {N} x {N} matrices in each worker, repeated for {SECONDS} s per precision,")
-    print(f"with {', '.join(map(str, counts))} worker processes, one per core.\n")
+    print(f"with {', '.join(map(str, counts))} worker processes, one per core.")
 
-    print(f"{'':7}  {'float32':^28}  {'float64':^28}")
-    print(f"{'workers':>7}" + f"  {'TFLOPS':>8} {'speedup':>8} {'efficiency':>10}" * 2)
     base = None
     for workers in counts:
         with ProcessPoolExecutor(max_workers=workers) as pool:
             results = [future.result() for future in [pool.submit(run_cpu) for _ in range(workers)]]
         tflops = {dtype: sum(result[dtype] for result in results) for dtype in results[0]}
         base = base or tflops
-        row = f"{workers:7d}"
+        print(f"\n{workers} workers:")
         for dtype, speed in tflops.items():
             speedup = speed / base[dtype]
-            row += f"  {speed:8.3f} {speedup:8.2f} {speedup / workers:10.0%}"
-        print(row)
+            print(f"  {dtype}: {round(speed, 3)} TFLOPS, {round(speedup, 1)} times faster than 1 worker, "
+                  f"efficiency {round(100 * speedup / workers)}%")
 
-    print(f"\nTotal time: {time.perf_counter() - t0:.0f} s")
+    print(f"\nTotal time: {round(time.perf_counter() - t0)} s")
