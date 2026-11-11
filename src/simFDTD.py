@@ -10,15 +10,33 @@ import os
 
 import numpy as np
 
-_lib = ctypes.CDLL(os.path.join(os.path.dirname(os.path.abspath(__file__)), "libsimFDTD.so"))
+_lib = ctypes.CDLL(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "libsimFDTD.so")
+)
 _lib.simFDTD_createsimulation.restype = ctypes.c_void_p
-for _name, _nptr in [("deletesimulation", 1), ("updatee_all", 1), ("updateh_all", 1),
-                     ("updatee_pml", 1), ("updateh_pml", 1), ("updatecuda", 1), ("initfield", 1),
-                     ("addcurrents", 3), ("readysimulation", 1), ("resetfieldall", 1),
-                     ("updatee_planewave", 2), ("updateh_planewave", 2), ("setconst", 3),
-                     ("setsource", 2), ("updatesource", 2), ("setantennalocations", 2),
-                     ("createmu", 4), ("init1d", 3), ("updatematerial", 3),
-                     ("outputant", 2), ("outputvis", 3)]:
+for _name, _nptr in [
+    ("deletesimulation", 1),
+    ("updatee_all", 1),
+    ("updateh_all", 1),
+    ("updatee_pml", 1),
+    ("updateh_pml", 1),
+    ("updatecuda", 1),
+    ("initfield", 1),
+    ("addcurrents", 3),
+    ("readysimulation", 1),
+    ("resetfieldall", 1),
+    ("updatee_planewave", 2),
+    ("updateh_planewave", 2),
+    ("setconst", 3),
+    ("setsource", 2),
+    ("updatesource", 2),
+    ("setantennalocations", 2),
+    ("createmu", 4),
+    ("init1d", 3),
+    ("updatematerial", 3),
+    ("outputant", 2),
+    ("outputvis", 3),
+]:
     getattr(_lib, "simFDTD_" + _name).argtypes = [ctypes.c_void_p] * _nptr
     getattr(_lib, "simFDTD_" + _name).restype = None
 _lib.simFDTD_devicereset.argtypes = []
@@ -42,7 +60,9 @@ def _data(x):
 def simFDTD(*prhs):
     nrhs = len(prhs)
     if nrhs < 1:
-        _mexErrMsgIdAndTxt("simFDTD:InvalidInput", "At least one input required: operation string.")
+        _mexErrMsgIdAndTxt(
+            "simFDTD:InvalidInput", "At least one input required: operation string."
+        )
 
     op = prhs[0].lower()
 
@@ -50,8 +70,12 @@ def simFDTD(*prhs):
         return np.uint64(_lib.simFDTD_createsimulation())
 
     if nrhs < 2:
-        _mexErrMsgIdAndTxt("simFDTD:InvalidInput", "Simulation pointer required for this operation.")
-    sim = int(_data(prhs[1]).view(np.uint64)[0])  # (simulation *)(*(uint64_T *)mxGetData(prhs[1]))
+        _mexErrMsgIdAndTxt(
+            "simFDTD:InvalidInput", "Simulation pointer required for this operation."
+        )
+    sim = int(
+        _data(prhs[1]).view(np.uint64)[0]
+    )  # (simulation *)(*(uint64_T *)mxGetData(prhs[1]))
 
     if op == "deletesimulation":
         _lib.simFDTD_deletesimulation(sim)
@@ -133,16 +157,20 @@ def simFDTD(*prhs):
     elif op == "outputant":
         if nrhs < 3:
             _mexErrMsgIdAndTxt("simFDTD:InvalidInput", "OutAntSize required.")
-        OutAntSize = int(_data(prhs[2]).view(np.uint32)[0])  # *((unsigned int *)mxGetData(prhs[2]))
-        antData = np.zeros((1, OutAntSize), dtype=np.single, order='F')
+        OutAntSize = int(
+            _data(prhs[2]).view(np.uint32)[0]
+        )  # *((unsigned int *)mxGetData(prhs[2]))
+        antData = np.zeros((1, OutAntSize), dtype=np.single, order="F")
         _lib.simFDTD_outputant(sim, antData.ctypes.data)
         return antData
     elif op == "outputvis":
         if nrhs < 4:
             _mexErrMsgIdAndTxt("simFDTD:InvalidInput", "OutAntSize and flag required.")
-        OutAntSize = int(_data(prhs[2]).view(np.uint32)[0])  # *((unsigned int *)mxGetData(prhs[2]))
+        OutAntSize = int(
+            _data(prhs[2]).view(np.uint32)[0]
+        )  # *((unsigned int *)mxGetData(prhs[2]))
         flag = _data(prhs[3])
-        Data = np.zeros((1, OutAntSize), dtype=np.single, order='F')
+        Data = np.zeros((1, OutAntSize), dtype=np.single, order="F")
         _lib.simFDTD_outputvis(sim, Data.ctypes.data, flag.ctypes.data)
         return Data
     else:
