@@ -4,8 +4,6 @@ import sys
 import time
 from types import SimpleNamespace
 
-import matplotlib
-import matplotlib.pyplot as plt
 import numpy as np
 
 from src.simFDTD import simFDTD, reset_gpuDevice
@@ -51,10 +49,8 @@ def TypeReal(x):
 
 reset_gpuDevice()
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-# clear
-plt.close("all")
-matplotlib.use("Agg")  # never open plot windows, only save the figures
-os.makedirs("figures", exist_ok=True)
+# No plots here (the cluster has no graphics): the data go to results/, GICpostprocess.py plots them
+os.makedirs("results", exist_ok=True)
 
 
 sys.path[0:0] = [
@@ -83,12 +79,7 @@ t = np.arange(0, 100, dt)  # 0:dt:100
 g = Amax * np.exp(-((t - t0) ** 2) / (2 * sigma**2))
 
 
-plt.figure()
-plt.plot(t, g / 1e3, linewidth=2)
-plt.xlabel("Time (s)")
-plt.ylabel("Current (kA)")
-plt.title("Decaying Gaussian Source (Peak at t=0)")
-plt.grid(True)
+np.savez("results/source.npz", dt=dt, g=g[0:timeSteps])  # the part of g the solver uses
 
 
 ####save optimization parameters
@@ -176,43 +167,12 @@ for i in range(0, timeSteps):
 
     if np.mod(i, 1000) == 0:
         print(f"step {i}/{timeSteps}, elapsed {time.time() - tic:.1f} s", flush=True)
-        aa = simFDTD(
-            "OutputVis",
-            P,
-            np.uint32(extend_dimX * extend_dimY * extend_dimZ),
-            np.int32(1),
-        )
-        bb = np.reshape(aa, [extend_dimX, extend_dimY, extend_dimZ], order="F")
-        plt.clf()  # MATLAB's subplot/imagesc/colorbar replace the previous ones; matplotlib would stack them
-        plt.subplot(2, 1, 1)
-        plt.imshow(np.squeeze(np.abs(bb[10:250, 10:270, 16])).T, aspect="auto")
-        plt.colorbar()
-        plt.gca().invert_yaxis()
-        plt.gca().set_box_aspect(1)
-        plt.title("Ex--Xsilce" + str(i))
-        aa = simFDTD(
-            "OutputVis",
-            P,
-            np.uint32(extend_dimX * extend_dimY * extend_dimZ),
-            np.int32(2),
-        )
-        bb = np.reshape(aa, [extend_dimX, extend_dimY, extend_dimZ], order="F")
-        plt.subplot(2, 1, 2)
-        plt.imshow(np.squeeze((bb[10:250, 10:270, 16])).T, aspect="auto")
-        plt.colorbar()
-        plt.gca().invert_yaxis()
-        plt.gca().set_box_aspect(1)
-        plt.title("Ey--Xsilce" + str(i))
-
-        # aa=simFDTD('OutputVis',P,np.uint32(extend_dimX*extend_dimY*extend_dimZ),np.int32(3))
-        # bb=(np.reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ],order='F'))
-        # plt.subplot(2,2,3)
-        # plt.imshow(np.squeeze(np.abs(bb[10:250,10:270,15])).T,aspect='auto')
-        # plt.colorbar()
-        # plt.gca().invert_yaxis()
-        # plt.gca().set_box_aspect(1)
-        # plt.title("Ez--Xsilce"+str(i))
-        plt.savefig(f"figures/Ex_Ey_{i:06d}.pdf")
+        # Ex (component 1) and Ey (component 2) on the plane k = 16, for GICpostprocess.py
+        shape = [extend_dimX, extend_dimY, extend_dimZ]
+        n_cells = np.uint32(extend_dimX * extend_dimY * extend_dimZ)
+        Ex = np.reshape(simFDTD("OutputVis", P, n_cells, np.int32(1)), shape, order="F")
+        Ey = np.reshape(simFDTD("OutputVis", P, n_cells, np.int32(2)), shape, order="F")
+        np.savez(f"results/fields_{i:06d}.npz", step=i, Ex=Ex[:, :, 16], Ey=Ey[:, :, 16])
 
 
 print("Elapsed time is %f seconds." % (time.time() - tic))  # toc
