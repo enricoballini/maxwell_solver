@@ -5,8 +5,8 @@ SECONDS seconds in float32 and SECONDS in float64, and prints the speed of each;
 is long enough to watch the GPU at 100% with watch -n 1 nvidia-smi. On GPUs such as the
 RTX PRO 4000 Blackwell most cores work in float32 only, so float64 runs many times slower.
 
-Then it does the same on the CPU with 1, 2, 4, ... worker processes, up to the number of
-CPU cores the job may use, one worker per core: each worker multiplies its own two
+Then it does the same on the CPU with 1, 2, 4, ... worker processes, up to twice the number
+of CPU cores the job may use, to show what happens beyond one worker per core: each worker multiplies its own two
 matrices for SECONDS seconds per precision (run_cpu). For each run it prints the speed, the speedup
 over one worker and the parallel efficiency (speedup divided by the number of workers).
 
@@ -98,7 +98,7 @@ def as_ranges(numbers):
 if __name__ == "__main__":
     t0 = time.perf_counter()
     cores = sorted(os.sched_getaffinity(0))
-    counts = sorted({w for w in (1, 2, 4, 8, 16, 24) if w <= len(cores)} | {len(cores)})
+    counts = sorted({w for w in (1, 2, 4, 8, 16, 24, 32, 48) if w <= 2 * len(cores)} | {len(cores), 2 * len(cores)})
 
     print(f"Slurm job: {os.environ.get('SLURM_JOB_ID', 'none (not started by Slurm)')}")
     print(f"CPU cores this job may use: {len(cores)} ({as_ranges(cores)})")
@@ -114,7 +114,7 @@ if __name__ == "__main__":
         print("\nNo GPU in this job: GPU part skipped.")
 
     print(f"\nCPU: product of two {N} x {N} matrices in each worker, repeated for {SECONDS} s per precision,")
-    print(f"with {', '.join(map(str, counts))} worker processes, one per core.")
+    print(f"with {', '.join(map(str, counts))} worker processes on {len(cores)} cores.")
 
     base = None
     for workers in counts:
