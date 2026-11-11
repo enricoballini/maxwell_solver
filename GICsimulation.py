@@ -171,7 +171,9 @@ for i in range(0, timeSteps):
         n_cells = np.uint32(extend_dimX * extend_dimY * extend_dimZ)
         Ex = np.reshape(simFDTD("OutputVis", P, n_cells, np.int32(1)), shape, order="F")
         Ey = np.reshape(simFDTD("OutputVis", P, n_cells, np.int32(2)), shape, order="F")
-        np.savez(f"results/fields_{i:06d}.npz", step=i, Ex=Ex[:, :, 16], Ey=Ey[:, :, 16])
+        np.savez(
+            f"results/fields_{i:06d}.npz", step=i, Ex=Ex[:, :, 16], Ey=Ey[:, :, 16]
+        )
 
 
 print("Elapsed time is %f seconds." % (time.time() - tic))  # toc
@@ -179,3 +181,6 @@ print("Elapsed time is %f seconds." % (time.time() - tic))  # toc
 simFDTD("DeleteSimulation", P)
 
 reset_gpuDevice()
+
+
+print("Done!")
