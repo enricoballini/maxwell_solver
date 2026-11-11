@@ -2,6 +2,6 @@
 set -e
 cd "$(dirname "$0")"
 
-source venv/bin/activate
+if [ -f venv/bin/activate ]; then source venv/bin/activate; fi
 (cd src && python Compile.py)
 python -u GICsimulation.py          
