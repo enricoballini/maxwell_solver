@@ -1,18 +1,18 @@
-"""Scalability test: invert many large random matrices in parallel.
+"""Scalability test: multiply large random matrices in parallel, on the CPU and on the GPU.
 
-The same COUNT matrices are inverted with 1, 2, 4, ... worker processes, up to the
-number of CPU cores the job may use, one worker per core. For each run it prints the
-time, the speedup over one worker and the parallel efficiency (speedup divided by the
-number of workers).
-
-If the job also has a GPU, it first keeps the GPU busy multiplying two large matrices,
+If the job has a GPU, it first keeps the GPU busy multiplying two large matrices,
 SECONDS seconds in float32 and SECONDS in float64, and prints the speed of each; that
 is long enough to watch the GPU at 100% with watch -n 1 nvidia-smi. On GPUs such as the
 RTX PRO 4000 Blackwell most cores work in float32 only, so float64 runs many times slower.
 
-On HPsp the job files invert_matrices_1_gpu.slurm, invert_matrices_2_fast.slurm and
-invert_matrices_3_all.slurm run it with the GPU on the 8 efficiency cores, on the
-8 performance cores, and on all 24 cores.
+Then it does the same on the CPU with 1, 2, 4, ... worker processes, up to the number of
+CPU cores the job may use, one worker per core: each worker multiplies its own two
+matrices for SECONDS seconds per precision (run_cpu). For each run it prints the speed, the speedup
+over one worker and the parallel efficiency (speedup divided by the number of workers).
+
+On HPsp the job files invert_matrices_1_gpu_8_cores.slurm, invert_matrices_2_gpu_16_cores.slurm,
+invert_matrices_3_fast.slurm and invert_matrices_4_all.slurm run it with the GPU on 8 cores,
+with the GPU on 16 cores, without GPU on 8 cores, and without GPU on all 24 cores.
 """
 import os
 
@@ -26,25 +26,31 @@ from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 
-N = 3000     # each CPU matrix is N x N, in float64
-COUNT = 48   # matrices per run; divisible by 1, 2, 4, 8, 16 and 24, so all workers get the same share
+N = 3000     # each CPU worker multiplies two N x N matrices
 M = 8192     # the GPU multiplies two M x M matrices
-SECONDS = 30 # how long the GPU keeps multiplying, per precision
+SECONDS = 30 # how long the multiplications last, per precision (and on the CPU per number of workers)
 
 
-def invert(seed):
-    """Invert one random matrix and return the largest entry of A A^-1 - I."""
-    # random entries in [0, 1) plus N on the diagonal: invertible and well conditioned
-    a = np.random.default_rng(seed).random((N, N)) + N * np.eye(N)
-    return np.abs(a @ np.linalg.inv(a) - np.eye(N)).max()
+def run_cpu():
+    """Multiply two random N x N matrices on one CPU core for SECONDS seconds, in float32 and in float64.
 
-
-def run_cpu(workers):
-    """Invert COUNT matrices with the given number of worker processes; return time and largest error."""
-    start = time.perf_counter()
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        errors = list(pool.map(invert, range(COUNT)))
-    return time.perf_counter() - start, max(errors)
+    Returns the speed in TFLOPS (10^12 floating-point operations per second) for each
+    precision. One product takes about 2 N^3 operations: N multiplications and N additions
+    for each of the N^2 entries. The main program runs it in several worker processes at once.
+    """
+    rng = np.random.default_rng()
+    tflops = {}
+    for dtype in ("float32", "float64"):
+        a = rng.random((N, N), dtype=dtype)
+        b = rng.random((N, N), dtype=dtype)
+        a @ b  # warm-up: loads the linear-algebra library before the timing starts
+        products = 0
+        start = time.perf_counter()
+        while time.perf_counter() - start < SECONDS:
+            a @ b
+            products += 1
+        tflops[dtype] = 2 * N**3 * products / (time.perf_counter() - start) / 1e12
+    return tflops
 
 
 def run_gpu():
@@ -107,18 +113,21 @@ if __name__ == "__main__":
     else:
         print("\nNo GPU in this job: GPU part skipped.")
 
-    print(f"\nEach run inverts {COUNT} random {N} x {N} matrices (float64, {N * N * 8 / 1e6:.0f} MB each)")
+    print(f"\nCPU: product of two {N} x {N} matrices in each worker, repeated for {SECONDS} s per precision,")
     print(f"with {', '.join(map(str, counts))} worker processes, one per core.\n")
 
-    print(f"{'workers':>7} {'time [s]':>9} {'speedup':>8} {'efficiency':>11} {'matrices/s':>11}")
-    worst = 0.0
+    print(f"{'':7}  {'float32':^28}  {'float64':^28}")
+    print(f"{'workers':>7}" + f"  {'TFLOPS':>8} {'speedup':>8} {'efficiency':>10}" * 2)
     base = None
     for workers in counts:
-        elapsed, error = run_cpu(workers)
-        base = base or elapsed
-        worst = max(worst, error)
-        speedup = base / elapsed
-        print(f"{workers:7d} {elapsed:9.1f} {speedup:8.2f} {speedup / workers:11.0%} {COUNT / elapsed:11.2f}")
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            results = [future.result() for future in [pool.submit(run_cpu) for _ in range(workers)]]
+        tflops = {dtype: sum(result[dtype] for result in results) for dtype in results[0]}
+        base = base or tflops
+        row = f"{workers:7d}"
+        for dtype, speed in tflops.items():
+            speedup = speed / base[dtype]
+            row += f"  {speed:8.3f} {speedup:8.2f} {speedup / workers:10.0%}"
+        print(row)
 
-    print(f"\nLargest error |A A^-1 - I| over all inverses: {worst:.1e}")
-    print(f"Total time: {time.perf_counter() - t0:.0f} s")
+    print(f"\nTotal time: {time.perf_counter() - t0:.0f} s")

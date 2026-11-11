@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=invert_gpu
+#SBATCH --job-name=1_gpu_8_cores
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
