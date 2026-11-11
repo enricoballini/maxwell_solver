@@ -49,8 +49,7 @@ def TypeReal(x):
 
 reset_gpuDevice()
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-# No plots here (the cluster has no graphics): the data go to results/, GICpostprocess.py plots them
-os.makedirs("results", exist_ok=True)
+# No plots here (the cluster has no graphics): the data go to results/ (made by run.sh), GICpostprocess.py plots them
 
 
 sys.path[0:0] = [
