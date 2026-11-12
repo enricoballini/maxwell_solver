@@ -617,6 +617,25 @@ public:
         Data[i] = Ez[i];
       }
     }
+    // flags 4, 5, 6: Hx, Hy, Hz (used by tests/test_invariants.py)
+    else if (flag[0] == 4)
+    {
+      cudaMemcpyAsync(Data, Hx_GPU, (IJK_Size)*real_size, cudaMemcpyDeviceToHost,
+                      stream);
+      cudaStreamSynchronize(stream);
+    }
+    else if (flag[0] == 5)
+    {
+      cudaMemcpyAsync(Data, Hy_GPU, (IJK_Size)*real_size, cudaMemcpyDeviceToHost,
+                      stream);
+      cudaStreamSynchronize(stream);
+    }
+    else if (flag[0] == 6)
+    {
+      cudaMemcpyAsync(Data, Hz_GPU, (IJK_Size)*real_size, cudaMemcpyDeviceToHost,
+                      stream);
+      cudaStreamSynchronize(stream);
+    }
   }
 
   void outputAnt(real *antData)
