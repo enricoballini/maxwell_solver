@@ -789,21 +789,25 @@ __global__ void GPU_updateEPmlX(const T *__restrict__ Hy, const T *__restrict__ 
 template <typename T>
 __global__ void GPU_updateEPmlY(const T *__restrict__ Hx, const T *__restrict__ Hz, T *__restrict__ Ex, T *__restrict__ Ez, T *__restrict__ psi_Exy_1,
                                 T *__restrict__ psi_Ezy_1, const T *__restrict__ b_Ey_1, const T *__restrict__ c_Ey_1, const T *__restrict__ Cexh, const T *__restrict__ Cezh,
-                                const T dy, const size_t nyPML, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t dim)
+                                const T dy, const size_t nyPML, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t dim,
+                                const size_t firstIdxEx)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x;
     size_t dim_s = Imax * 2 * nyPML;
     size_t idz = ti / dim_s;
     size_t idy = (ti - idz * dim_s) / Imax;
     size_t idx = ti - idz * dim_s - idy * Imax;
-    bool cond1 = (idz < Kmax - 1) && (idz >= 1) && (idx < Imax - 1) && (idx > 0) && (idy > 0) && (idy < nyPML);
-    bool cond2 = (idz < Kmax - 1) && (idz >= 1) && (idx < Imax - 1) && (idx > 0) && (idy >= nyPML) && (idy < 2 * nyPML);
+    bool cond1 = (idz < Kmax - 1) && (idz >= 1) && (idx < Imax - 1) && (idy > 0) && (idy < nyPML);
+    bool cond2 = (idz < Kmax - 1) && (idz >= 1) && (idx < Imax - 1) && (idy >= nyPML) && (idy < 2 * nyPML);
     size_t id = cond1 ? idx + idy * Imax + idz * dim : cond2 ? idx + (idy + Jmax - 2 * nyPML) * Imax + idz * dim
                                                              : Imax;
-    if (cond1 || cond2)
+    if ((cond1 || cond2) && (idx >= firstIdxEx))
     {
         psi_Exy_1[ti] = b_Ey_1[idy] * psi_Exy_1[ti] + c_Ey_1[idy] * (Hz[id] - Hz[id - Imax]) / dy;
         Ex[id] = Ex[id] + Cexh[id] * psi_Exy_1[ti] * dy;
+    }
+    if ((cond1 || cond2) && (idx > 0))
+    {
         psi_Ezy_1[ti] = b_Ey_1[idy] * psi_Ezy_1[ti] + c_Ey_1[idy] * (Hx[id] - Hx[id - Imax]) / dy;
         Ez[id] = Ez[id] - Cezh[id] * psi_Ezy_1[ti] * dy;
     }
@@ -828,21 +832,25 @@ __global__ void GPU_updateEPmlY(const T *__restrict__ Hx, const T *__restrict__ 
 template <typename T>
 __global__ void GPU_updateEPmlZ(const T *__restrict__ Hx, const T *__restrict__ Hy, T *__restrict__ Ex, T *__restrict__ Ey, T *__restrict__ psi_Exz_1,
                                 T *__restrict__ psi_Eyz_1, const T *__restrict__ b_Ez_1, const T *__restrict__ c_Ez_1, const T *__restrict__ Cexh, const T *__restrict__ Ceyh,
-                                const T dz, const size_t nzPML, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t dim)
+                                const T dz, const size_t nzPML, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t dim,
+                                const size_t firstIdxEx)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x;
     size_t dim_s = dim;
     size_t idz = ti / dim_s;
     size_t idy = (ti - idz * dim_s) / Imax;
     size_t idx = ti - idz * dim_s - idy * Imax;
-    bool cond1 = (idz < nzPML) && (idz >= 1) && (idx < Imax - 1) && (idx > 0) && (idy < Jmax - 1) && (idy > 0);
-    bool cond2 = (idz < 2 * nzPML) && (idz >= nzPML) && (idx < Imax - 1) && (idx > 0) && (idy < Jmax - 1) && (idy > 0);
+    bool cond1 = (idz < nzPML) && (idz >= 1) && (idx < Imax - 1) && (idy < Jmax - 1) && (idy > 0);
+    bool cond2 = (idz < 2 * nzPML) && (idz >= nzPML) && (idx < Imax - 1) && (idy < Jmax - 1) && (idy > 0);
     size_t id = cond1 ? idx + idy * Imax + idz * dim : cond2 ? idx + idy * Imax + (idz + Kmax - 2 * nzPML) * dim
                                                              : dim;
-    if (cond1 || cond2)
+    if ((cond1 || cond2) && (idx >= firstIdxEx))
     {
         psi_Exz_1[ti] = b_Ez_1[idz] * psi_Exz_1[ti] + c_Ez_1[idz] * (Hy[id] - Hy[id - dim]) / dz;
         Ex[id] = Ex[id] - Cexh[id] * psi_Exz_1[ti] * dz;
+    }
+    if ((cond1 || cond2) && (idx > 0))
+    {
 
         psi_Eyz_1[ti] = b_Ez_1[idz] * psi_Eyz_1[ti] + c_Ez_1[idz] * (Hx[id] - Hx[id - dim]) / dz;
         Ey[id] = Ey[id] + Ceyh[id] * psi_Eyz_1[ti] * dz;

@@ -27,6 +27,7 @@ for _name, _nptr in [
     ("resetfieldall", 1),
     ("updatee_planewave", 2),
     ("updateh_planewave", 2),
+    ("setpml", 3),
     ("setconst", 3),
     ("setsource", 2),
     ("updatesource", 2),
@@ -115,6 +116,14 @@ def simFDTD(*prhs):
             _mexErrMsgIdAndTxt("simFDTD:InvalidInput", "time required.")
         time = _data(prhs[2])
         _lib.simFDTD_updateh_planewave(sim, time.ctypes.data)
+    elif op == "setpml":
+        if nrhs < 4:
+            _mexErrMsgIdAndTxt(
+                "simFDTD:InvalidInput", "cellsAndFirstXIndex and alphaMax required."
+            )
+        cellsAndFirstXIndex = _data(prhs[2])
+        alphaMax = _data(prhs[3])
+        _lib.simFDTD_setpml(sim, cellsAndFirstXIndex.ctypes.data, alphaMax.ctypes.data)
     elif op == "setconst":
         if nrhs < 4:
             _mexErrMsgIdAndTxt("simFDTD:InvalidInput", "freqRes and TimeDim required.")

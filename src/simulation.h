@@ -16,7 +16,6 @@
 #endif
 typedef float real;
 constexpr size_t real_size = sizeof(float);
-constexpr size_t pml_size = 10;
 constexpr size_t NumThreads = 1024;
 constexpr double c = 299792458;
 constexpr double mu0 = 4 * M_PI * 1e-7;
@@ -73,7 +72,17 @@ public:
     init_1D = 0;
     init_mu = 0;
     block_size = 32;
+    pml_size = 10;
+    alpha_max = 0.08;
+    first_x_index_of_Ex_pml_memory = 1;
     cudaStreamCreate(&stream);
+  }
+  ////////////////////PML cells, first x index of the Ex memory in the y- and z-layers, alpha_max; before setConst
+  void setPML(int *cellsAndFirstXIndex, real *alphaMax)
+  {
+    pml_size = cellsAndFirstXIndex[0];
+    first_x_index_of_Ex_pml_memory = cellsAndFirstXIndex[1];
+    alpha_max = alphaMax[0];
   }
   ////////////////////set constant parameters
   void setConst(real *freqRes, int *TimeDim)
@@ -84,7 +93,6 @@ public:
     poly_m = 3;
     alpha_m = 1.0;
     sig_max = 0.8 * (poly_m + 1.0) / (sqrt(mu0 / eps0) * delX);
-    alpha_max = 0.08;
     kappa_max = 1.0;
     max_TimeSteps = TimeDim[0];
     I_size = TimeDim[1];
@@ -407,11 +415,11 @@ public:
     GPU_updateEPmlY<<<gridsize_y, NumThreads, 0, stream>>>(
         Hx_GPU, Hz_GPU, Ex_GPU, Ez_GPU, psi_Exy_GPU, psi_Ezy_GPU, b_Ex_GPU,
         c_Ex_GPU, Cexh_GPU, Cezh_GPU, delX, pml_size, Imax, Jmax, Kmax,
-        IJ_Size);
+        IJ_Size, first_x_index_of_Ex_pml_memory);
     GPU_updateEPmlZ<<<gridsize_z, NumThreads, 0, stream>>>(
         Hx_GPU, Hy_GPU, Ex_GPU, Ey_GPU, psi_Exz_GPU, psi_Eyz_GPU, b_Ex_GPU,
         c_Ex_GPU, Cexh_GPU, Ceyh_GPU, delX, pml_size, Imax, Jmax, Kmax,
-        IJ_Size);
+        IJ_Size, first_x_index_of_Ex_pml_memory);
     GPU_updateEPmlX<<<gridsize_x, NumThreads, 0, stream>>>(
         Hy_GPU, Hz_GPU, Ey_GPU, Ez_GPU, psi_Eyx_GPU, psi_Ezx_GPU, b_Ex_GPU,
         c_Ex_GPU, Ceyh_GPU, Cezh_GPU, delX, pml_size, Imax, Jmax, Kmax,
@@ -1388,6 +1396,8 @@ private:
   real sig_max;
   real alpha_max;
   real kappa_max;
+  size_t pml_size;
+  size_t first_x_index_of_Ex_pml_memory;
 
   size_t Imax;
   size_t Jmax;

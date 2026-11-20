@@ -12,13 +12,14 @@ extern "C"
     void simFDTD_updatee_pml(void *sim) { ((simulation *)sim)->updateE_PML(); }
     void simFDTD_updateh_pml(void *sim) { ((simulation *)sim)->updateH_PML(); }
     void simFDTD_updatecuda(void *sim) { ((simulation *)sim)->updateCuda(); }
-    // InitField: removed from simFDTD.cu in commit 48b7151, still called by highfrequency.m/.py
+    // InitField: removed from simFDTD.cu in commit 48b7151, still called by highfrequency.py
     void simFDTD_initfield(void *sim) { ((simulation *)sim)->initField(); }
     void simFDTD_addcurrents(void *sim, int *time, int *ind) { ((simulation *)sim)->addCurrents(time, ind); }
     void simFDTD_readysimulation(void *sim) { ((simulation *)sim)->readySimulation(); }
     void simFDTD_resetfieldall(void *sim) { ((simulation *)sim)->ResetFieldAll(); }
     void simFDTD_updatee_planewave(void *sim, int *time) { ((simulation *)sim)->updateE_PlaneWave(time); }
     void simFDTD_updateh_planewave(void *sim, int *time) { ((simulation *)sim)->updateH_PlaneWave(time); }
+    void simFDTD_setpml(void *sim, int *cellsAndFirstXIndex, float *alphaMax) { ((simulation *)sim)->setPML(cellsAndFirstXIndex, alphaMax); }
     void simFDTD_setconst(void *sim, float *TopfreqRes, int *TopTimeDim) { ((simulation *)sim)->setConst(TopfreqRes, TopTimeDim); }
     void simFDTD_setsource(void *sim, float *SourceIn) { ((simulation *)sim)->setSource(SourceIn); }
     void simFDTD_updatesource(void *sim, float *SourceIn) { ((simulation *)sim)->updateSource(SourceIn); }

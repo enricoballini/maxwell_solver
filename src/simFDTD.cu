@@ -100,6 +100,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
             int *time = (int *)mxGetPr(prhs[2]);
             sim->updateH_PlaneWave(time);
         }
+        else if (strcmp(op, "setpml") == 0)
+        {
+            if (nrhs < 4)
+                mexErrMsgIdAndTxt("simFDTD:InvalidInput", "cellsAndFirstXIndex and alphaMax required.");
+            int *cellsAndFirstXIndex = (int *)mxGetPr(prhs[2]);
+            float *alphaMax = (float *)mxGetPr(prhs[3]);
+            sim->setPML(cellsAndFirstXIndex, alphaMax);
+        }
         else if (strcmp(op, "setconst") == 0)
         {
             if (nrhs < 4)

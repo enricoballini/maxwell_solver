@@ -161,12 +161,10 @@ for i in range(0, timeSteps):
     simFDTD("UpdateH_PML", P)
     simFDTD("UpdateE_All", P)
     simFDTD("UpdateE_PML", P)
-    # simFDTD('AddCurrents',P,TypeInt([i,2]),TypeInt([1,249,139,139,26,26]))
     simFDTD("AddCurrents", P, TypeInt([i, 1]), TypeInt([1, 249, 139, 139, 26, 26]))
 
     if np.mod(i, 1000) == 0:
         print(f"step {i}/{timeSteps}, elapsed {time.time() - tic:.1f} s", flush=True)
-        # Ex (component 1) and Ey (component 2) on the plane k = 16, for GICpostprocess.py
         shape = [extend_dimX, extend_dimY, extend_dimZ]
         n_cells = np.uint32(extend_dimX * extend_dimY * extend_dimZ)
         Ex = np.reshape(simFDTD("OutputVis", P, n_cells, np.int32(1)), shape, order="F")
@@ -176,7 +174,7 @@ for i in range(0, timeSteps):
         )
 
 
-print("Elapsed time is %f seconds." % (time.time() - tic))  # toc
+print("Elapsed time is %f seconds." % (time.time() - tic))
 
 simFDTD("DeleteSimulation", P)
 
