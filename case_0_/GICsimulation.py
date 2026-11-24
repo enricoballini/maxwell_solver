@@ -6,7 +6,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from src.simFDTD import simFDTD, reset_gpuDevice
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.simFDTD import simFDTD, reset_gpuDevice  # noqa: E402
 
 # Python translation of GICsimulation.m. Indices are 0-based: MATLAB index k -> k-1, range a:b -> a-1:b.
 # The local functions at the end of GICsimulation.m are here at the top, because Python needs them
@@ -50,11 +51,6 @@ def TypeReal(x):
 reset_gpuDevice()
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 # No plots here (the cluster has no graphics): the data go to results/ (made by run.sh), GICpostprocess.py plots them
-
-
-sys.path[0:0] = [
-    p for p, _, _ in os.walk(".") if "venv" not in p.split(os.sep)
-]  # addpath(genpath(".")), skipping venv: its folders would shadow Python modules
 
 ###optimization parameters initialization
 clight = 299792458

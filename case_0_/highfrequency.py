@@ -6,8 +6,9 @@ from types import SimpleNamespace
 import matplotlib.pyplot as plt
 import numpy as np
 
-from CreateSource import CreateSource
-from src.simFDTD import simFDTD, reset_gpuDevice
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from CreateSource import CreateSource  # noqa: E402
+from src.simFDTD import simFDTD, reset_gpuDevice  # noqa: E402
 
 # Python translation of highfrequency.m. Indices are 0-based: MATLAB index k -> k-1, range a:b -> a-1:b.
 # The local functions at the end of highfrequency.m are here at the top, because Python needs them
@@ -55,7 +56,6 @@ plt.close('all')
 
 
 
-sys.path[0:0] = [p for p,_,_ in os.walk(".") if "venv" not in p.split(os.sep)] + [p for p,_,_ in os.walk("../Functions")]  # addpath(genpath("."),genpath("../Functions")), skipping venv: its folders would shadow Python modules
 ###optimization parameters initialization
 clight=299792458
 mu0=4*np.pi*1e-7

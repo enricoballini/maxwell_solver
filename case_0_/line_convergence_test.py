@@ -1,9 +1,11 @@
 import math
 import os
+import sys
 
 import numpy as np
 
-from src.simFDTD import reset_gpuDevice, simFDTD
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.simFDTD import reset_gpuDevice, simFDTD  # noqa: E402
 
 speed_of_light = 299792458
 vacuum_permeability = 4 * np.pi * 1e-7
