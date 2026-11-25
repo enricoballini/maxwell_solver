@@ -51,7 +51,7 @@ def TypeReal(x):
 
 reset_gpuDevice()
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-# No plots here (the cluster has no graphics): the data go to results/ (made by run.sh), GICpostprocess.py plots them
+# No plots here (the cluster has no graphics): the output goes to results/ (made by run.sh)
 
 ###optimization parameters initialization
 clight = 299792458
@@ -94,12 +94,13 @@ flag_plot = 1
 # --------------------project_FDTD_3D-----------------------
 pml_size = 10
 freqRes = [constSim.fctr, delX, delT]
-TimeDim = [timeSteps, constSim.Dim[0], constSim.Dim[1], constSim.Dim[2], numAnts]
-
-# # # #  Extend Dielectric profile for the CPML boundary condition
 extend_dimX = constSim.Dim[0] + 2 * pml_size
 extend_dimY = constSim.Dim[1] + 2 * pml_size
 extend_dimZ = constSim.Dim[2] + 2 * pml_size
+TimeDim = [timeSteps, extend_dimX, extend_dimY, extend_dimZ, numAnts]
+
+# # # #  Extend Dielectric profile for the CPML boundary condition
+
 SimOri = np.round([extend_dimX / 2, extend_dimY / 2, extend_dimZ / 2])
 eps_infx = np.ones((extend_dimX, extend_dimY, extend_dimZ))
 sigma_sx = 0.0000 * np.ones((extend_dimX, extend_dimY, extend_dimZ))
@@ -107,12 +108,12 @@ eps_infy = eps_infx.copy()  # .copy(): MATLAB assignment copies the array
 eps_infz = eps_infx.copy()
 sigma_sy = sigma_sx.copy()
 sigma_sz = sigma_sx.copy()
-with h5py.File("250x280gem.h5") as soil_file:
+with h5py.File("data/250x280gem.h5") as soil_file:
     assert (soil_file.attrs["dx_dy_dz"] == delX).all()
     soil_labels = soil_file["data"][:]
 # columns of the gprMax materials file: #material: eps_r sigma mu_r sigma_m ID
 conductivity_by_label = np.loadtxt(
-    "cond_250x280_materials.txt", usecols=2, comments=None
+    "data/cond_250x280_materials.txt", usecols=2, comments=None
 )
 ground_conductivity = conductivity_by_label[soil_labels]
 ground_layers = soil_labels.shape[2]

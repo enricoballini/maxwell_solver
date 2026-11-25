@@ -93,12 +93,13 @@ flag_plot = 1
 # --------------------project_FDTD_3D-----------------------
 pml_size = 10
 freqRes = [constSim.fctr, delX, delT]
-TimeDim = [timeSteps, constSim.Dim[0], constSim.Dim[1], constSim.Dim[2], numAnts]
-
-# # # #  Extend Dielectric profile for the CPML boundary condition
 extend_dimX = constSim.Dim[0] + 2 * pml_size
 extend_dimY = constSim.Dim[1] + 2 * pml_size
 extend_dimZ = constSim.Dim[2] + 2 * pml_size
+TimeDim = [timeSteps, extend_dimX, extend_dimY, extend_dimZ, numAnts]
+
+# # # #  Extend Dielectric profile for the CPML boundary condition
+
 SimOri = np.round([extend_dimX / 2, extend_dimY / 2, extend_dimZ / 2])
 eps_infx = np.ones((extend_dimX, extend_dimY, extend_dimZ))
 sigma_sx = 0.0000 * np.ones((extend_dimX, extend_dimY, extend_dimZ))

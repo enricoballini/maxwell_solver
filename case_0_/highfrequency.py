@@ -96,12 +96,13 @@ flag_plot=1
 #--------------------project_FDTD_3D-----------------------
 pml_size=10
 freqRes = [constSim.fctr, delX, delT]
-TimeDim = [timeSteps, constSim.Dim[0], constSim.Dim[1], constSim.Dim[2], numAnts]
-
-# # # #  Extend Dielectric profile for the CPML boundary condition
 extend_dimX = constSim.Dim[0]+2*pml_size
 extend_dimY = constSim.Dim[1]+2*pml_size
 extend_dimZ = constSim.Dim[2]+2*pml_size
+TimeDim = [timeSteps, extend_dimX, extend_dimY, extend_dimZ, numAnts]
+
+# # # #  Extend Dielectric profile for the CPML boundary condition
+
 SimOri=np.round([extend_dimX/2,extend_dimY/2,extend_dimZ/2])
 eps_infx = np.ones((extend_dimX,extend_dimY,extend_dimZ))
 sigma_sx = 0.0000*np.ones((extend_dimX,extend_dimY,extend_dimZ))
@@ -123,7 +124,6 @@ simFDTD('UpdateMaterial',P,TypeInt(5),TypeReal(eps_infy.flatten(order='F')))
 simFDTD('UpdateMaterial',P,TypeInt(6),TypeReal(eps_infz.flatten(order='F')))
 
 simFDTD('ReadySimulation',P)
-simFDTD('InitField',P)
 antdatasize=numAnts*timeSteps
 
 simFDTD('Init1D',P,TypeReal(1),TypeReal(constSim.source))
@@ -135,12 +135,12 @@ simFDTD('UpdateCuda',P)
 simFDTD('ResetFieldAll',P)
 for i in range(0,timeSteps):
     simFDTD('UpdateH_All',P)
-    #simFDTD('UpdateH_PlaneWave',P,TypeInt([i,3]))
+    simFDTD('UpdateH_PlaneWave',P,TypeInt([i,3]))
     simFDTD('UpdateH_PML',P)
     simFDTD('UpdateE_All',P)
-    #simFDTD('UpdateE_PlaneWave',P,TypeInt([i,3]))
+    simFDTD('UpdateE_PlaneWave',P,TypeInt([i,3]))
     simFDTD('UpdateE_PML',P)
-    simFDTD('AddCurrents',P,TypeInt([i,3]),TypeInt([11,239,139,139,26,26]))
+    # simFDTD('AddCurrents',P,TypeInt([i,1]),TypeInt([120,145,139,139,26,26]))
 
     if(np.mod(i,10)==0):
         # aa=simFDTD('OutputVis',P,np.uint32(extend_dimX*extend_dimY*extend_dimZ),np.int32(2))
@@ -160,11 +160,11 @@ for i in range(0,timeSteps):
         # plt.gca().set_box_aspect(1)
         # plt.title("Ey--Xsilce"+str(i))
 
-        aa=simFDTD('OutputVis',P,np.uint32(extend_dimX*extend_dimY*extend_dimZ),np.int32(1))
+        aa=simFDTD('OutputVis',P,np.uint32(extend_dimX*extend_dimY*extend_dimZ),np.int32(3))
         bb=(np.reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ],order='F'))
         plt.clf()  # MATLAB's imagesc/colorbar replace the previous ones; matplotlib would stack them
         #plt.subplot(2,2,3)
-        plt.imshow(np.squeeze(np.abs(bb[:,:,16])).T,aspect='auto')
+        plt.imshow(np.squeeze(np.abs(bb[:,119,:])).T,aspect='auto')
         plt.colorbar()
         plt.gca().invert_yaxis()
         plt.gca().set_box_aspect(1)

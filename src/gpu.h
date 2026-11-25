@@ -75,7 +75,7 @@ __global__ void AddSource_GPU_3D_1DThread(T *__restrict__ E_GPU, const T *__rest
         if ((i < Imax) && (j < Jmax) && (k < Kmax))
         {
             const size_t index = i + j * Imax + k * Imax * Jmax;
-            E_GPU[index] = Cexe_GPU[index] * E_GPU[index] - Cexh_GPU[index] * source * delX / delX / delX; ///*0.5*(1-cos(2*CUDART_PI_F*i/ni));
+            E_GPU[index] = E_GPU[index] - Cexh_GPU[index] * source * delX / delX / delX; ///*0.5*(1-cos(2*CUDART_PI_F*i/ni));
             /// E_GPU[index] = - source ;
         }
     }
@@ -192,8 +192,8 @@ __global__ void GPU_updateEx_PlaneWaveX_Z(T *__restrict__ Ex, const T *__restric
 
     if ((ti <= i1 - 1) && (tj <= j1))
     {
-        Ex[ti + tj * Imax + k0 * dim] = Ex[ti + tj * Imax + k0 * dim] + Cexh[ti + tj * Imax + (k0 - 1) * dim] * H[ti + time] * c;
-        Ex[ti + tj * Imax + k1 * dim] = Ex[ti + tj * Imax + k1 * dim] - Cexh[ti + tj * Imax + (k1)*dim] * H[ti + time] * c;
+        Ex[ti + tj * Imax + k0 * dim] = Ex[ti + tj * Imax + k0 * dim] + Cexh[ti + tj * Imax + k0 * dim] * H[ti + time] * c;
+        Ex[ti + tj * Imax + k1 * dim] = Ex[ti + tj * Imax + k1 * dim] - Cexh[ti + tj * Imax + k1 * dim] * H[ti + time] * c;
     }
 }
 
@@ -208,7 +208,7 @@ __global__ void GPU_updateEz_PlaneWaveX_Z(T *__restrict__ Ez, const T *__restric
 
     if ((tj <= j1) && (tk <= k1 - 1))
     {
-        Ez[i0 + tj * Imax + tk * dim] = Ez[i0 + tj * Imax + tk * dim] - Cezh[i0 - 1 + tj * Imax + tk * dim] * H[time + i0 - 1] * c;
+        Ez[i0 + tj * Imax + tk * dim] = Ez[i0 + tj * Imax + tk * dim] - Cezh[i0 + tj * Imax + tk * dim] * H[time + i0 - 1] * c;
         Ez[i1 + tj * Imax + tk * dim] = Ez[i1 + tj * Imax + tk * dim] + Cezh[i1 + tj * Imax + tk * dim] * H[time + i1] * c;
     }
 }
@@ -270,7 +270,7 @@ __global__ void GPU_updateEx_PlaneWaveX_Y(T *__restrict__ Ex, const T *__restric
     if ((ti <= i1 - 1) && (tk <= k1))
     {
         Ex[ti + j0 * Imax + tk * dim] = Ex[ti + j0 * Imax + tk * dim] - Cexh[ti + j0 * Imax + tk * dim] * H[ti + time] * c;
-        Ex[ti + j1 * Imax + tk * dim] = Ex[ti + j1 * Imax + tk * dim] + Cexh[ti + j0 * Imax + tk * dim] * H[ti + time] * c;
+        Ex[ti + j1 * Imax + tk * dim] = Ex[ti + j1 * Imax + tk * dim] + Cexh[ti + j1 * Imax + tk * dim] * H[ti + time] * c;
     }
 }
 
@@ -285,7 +285,7 @@ __global__ void GPU_updateEy_PlaneWaveX_Y(T *__restrict__ Ey, const T *__restric
 
     if ((tj <= j1 - 1) && (tk <= k1))
     {
-        Ey[i0 + tj * Imax + tk * dim] = Ey[i0 + tj * Imax + tk * dim] + Ceyh[i0 - 1 + tj * Imax + tk * dim] * H[i0 - 1 + time] * c;
+        Ey[i0 + tj * Imax + tk * dim] = Ey[i0 + tj * Imax + tk * dim] + Ceyh[i0 + tj * Imax + tk * dim] * H[i0 - 1 + time] * c;
         Ey[i1 + tj * Imax + tk * dim] = Ey[i1 + tj * Imax + tk * dim] - Ceyh[i1 + tj * Imax + tk * dim] * H[i1 + time] * c;
     }
 }
@@ -294,7 +294,7 @@ __global__ void GPU_updateEy_PlaneWaveX_Y(T *__restrict__ Ey, const T *__restric
 template <typename T>
 __global__ void GPU_updateHy_PlaneWaveY_X(T *__restrict__ Hy, const T *__restrict__ E, const T c,
                                           const T Chye, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t i0, const size_t i1,
-                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1)
+                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1, const size_t time)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x + i0;
     size_t tj = blockIdx.y * blockDim.y + threadIdx.y + j0;
@@ -302,15 +302,15 @@ __global__ void GPU_updateHy_PlaneWaveY_X(T *__restrict__ Hy, const T *__restric
 
     if ((ti <= i1 - 1) && (tj <= j1))
     {
-        Hy[ti + tj * Imax + (k0 - 1) * dim] = Hy[ti + tj * Imax + (k0 - 1) * dim] + Chye * E[tj] * c;
-        Hy[ti + tj * Imax + (k1)*dim] = Hy[ti + tj * Imax + (k1)*dim] - Chye * E[tj] * c;
+        Hy[ti + tj * Imax + (k0 - 1) * dim] = Hy[ti + tj * Imax + (k0 - 1) * dim] + Chye * E[tj + time] * c;
+        Hy[ti + tj * Imax + (k1)*dim] = Hy[ti + tj * Imax + (k1)*dim] - Chye * E[tj + time] * c;
     }
 }
 
 template <typename T>
 __global__ void GPU_updateHz_PlaneWaveY_X(T *__restrict__ Hz, const T *__restrict__ E, const T c,
                                           const T Chze, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t i0, const size_t i1,
-                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1)
+                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1, const size_t time)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x + i0;
     size_t tk = blockIdx.y * blockDim.y + threadIdx.y + k0;
@@ -318,15 +318,15 @@ __global__ void GPU_updateHz_PlaneWaveY_X(T *__restrict__ Hz, const T *__restric
 
     if ((ti <= i1 - 1) && (tk <= k1))
     {
-        Hz[ti + (j0 - 1) * Imax + tk * dim] = Hz[ti + (j0 - 1) * Imax + tk * dim] - Chze * E[j0] * c;
-        Hz[ti + (j1)*Imax + tk * dim] = Hz[ti + (j1)*Imax + tk * dim] + Chze * E[j1] * c;
+        Hz[ti + (j0 - 1) * Imax + tk * dim] = Hz[ti + (j0 - 1) * Imax + tk * dim] - Chze * E[j0 + time] * c;
+        Hz[ti + (j1)*Imax + tk * dim] = Hz[ti + (j1)*Imax + tk * dim] + Chze * E[j1 + time] * c;
     }
 }
 
 template <typename T>
 __global__ void GPU_updateEx_PlaneWaveY_X(T *__restrict__ Ex, const T *__restrict__ H, const T c,
                                           const T *__restrict__ Cexh, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t i0, const size_t i1,
-                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1)
+                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1, const size_t time)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x + i0;
     size_t tk = blockIdx.y * blockDim.y + threadIdx.y + k0;
@@ -334,15 +334,15 @@ __global__ void GPU_updateEx_PlaneWaveY_X(T *__restrict__ Ex, const T *__restric
 
     if ((ti <= i1 - 1) && (tk <= k1))
     {
-        Ex[ti + j0 * Imax + tk * dim] = Ex[ti + j0 * Imax + tk * dim] - Cexh[ti + (j0 - 1) * Imax + tk * dim] * H[j0 - 1] * c;
-        Ex[ti + j1 * Imax + tk * dim] = Ex[ti + j1 * Imax + tk * dim] + Cexh[ti + (j1)*Imax + tk * dim] * H[j1] * c;
+        Ex[ti + j0 * Imax + tk * dim] = Ex[ti + j0 * Imax + tk * dim] - Cexh[ti + j0 * Imax + tk * dim] * H[j0 - 1 + time] * c;
+        Ex[ti + j1 * Imax + tk * dim] = Ex[ti + j1 * Imax + tk * dim] + Cexh[ti + j1 * Imax + tk * dim] * H[j1 + time] * c;
     }
 }
 
 template <typename T>
 __global__ void GPU_updateEy_PlaneWaveY_X(T *__restrict__ Ey, const T *__restrict__ H, const T c,
                                           const T *__restrict__ Ceyh, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t i0, const size_t i1,
-                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1)
+                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1, const size_t time)
 {
     size_t tj = blockIdx.x * blockDim.x + threadIdx.x + j0;
     size_t tk = blockIdx.y * blockDim.y + threadIdx.y + k0;
@@ -350,8 +350,8 @@ __global__ void GPU_updateEy_PlaneWaveY_X(T *__restrict__ Ey, const T *__restric
 
     if ((tj <= j1 - 1) && (tk <= k1))
     {
-        Ey[i0 + tj * Imax + tk * dim] = Ey[i0 + tj * Imax + tk * dim] + Ceyh[i0 - 1 + tj * Imax + tk * dim] * H[tj] * c;
-        Ey[i1 + tj * Imax + tk * dim] = Ey[i1 + tj * Imax + tk * dim] - Ceyh[i1 + tj * Imax + tk * dim] * H[tj] * c;
+        Ey[i0 + tj * Imax + tk * dim] = Ey[i0 + tj * Imax + tk * dim] + Ceyh[i0 + tj * Imax + tk * dim] * H[tj + time] * c;
+        Ey[i1 + tj * Imax + tk * dim] = Ey[i1 + tj * Imax + tk * dim] - Ceyh[i1 + tj * Imax + tk * dim] * H[tj + time] * c;
     }
 }
 
@@ -359,7 +359,7 @@ __global__ void GPU_updateEy_PlaneWaveY_X(T *__restrict__ Ey, const T *__restric
 template <typename T>
 __global__ void GPU_updateHx_PlaneWaveY_Z(T *__restrict__ Hx, const T *__restrict__ E, const T c,
                                           const T Chxe, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t i0, const size_t i1,
-                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1)
+                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1, const size_t time)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x + i0;
     size_t tk = blockIdx.y * blockDim.y + threadIdx.y + k0;
@@ -367,15 +367,15 @@ __global__ void GPU_updateHx_PlaneWaveY_Z(T *__restrict__ Hx, const T *__restric
 
     if ((ti <= i1) && (tk <= k1 - 1))
     {
-        Hx[ti + (j0 - 1) * Imax + tk * dim] = Hx[ti + (j0 - 1) * Imax + tk * dim] + Chxe * E[j0] * c;
-        Hx[ti + j1 * Imax + tk * dim] = Hx[ti + j1 * Imax + tk * dim] - Chxe * E[j1] * c;
+        Hx[ti + (j0 - 1) * Imax + tk * dim] = Hx[ti + (j0 - 1) * Imax + tk * dim] + Chxe * E[j0 + time] * c;
+        Hx[ti + j1 * Imax + tk * dim] = Hx[ti + j1 * Imax + tk * dim] - Chxe * E[j1 + time] * c;
     }
 }
 
 template <typename T>
 __global__ void GPU_updateHy_PlaneWaveY_Z(T *__restrict__ Hy, const T *__restrict__ E, const T c,
                                           const T Chye, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t i0, const size_t i1,
-                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1)
+                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1, const size_t time)
 {
     size_t tj = blockIdx.x * blockDim.x + threadIdx.x + j0;
     size_t tk = blockIdx.y * blockDim.y + threadIdx.y + k0;
@@ -383,15 +383,15 @@ __global__ void GPU_updateHy_PlaneWaveY_Z(T *__restrict__ Hy, const T *__restric
 
     if ((tj <= j1) && (tk <= k1 - 1))
     {
-        Hy[i0 - 1 + tj * Imax + tk * dim] = Hy[i0 - 1 + tj * Imax + tk * dim] - Chye * E[tj] * c;
-        Hy[i1 + tj * Imax + tk * dim] = Hy[i1 + tj * Imax + tk * dim] + Chye * E[tj] * c;
+        Hy[i0 - 1 + tj * Imax + tk * dim] = Hy[i0 - 1 + tj * Imax + tk * dim] - Chye * E[tj + time] * c;
+        Hy[i1 + tj * Imax + tk * dim] = Hy[i1 + tj * Imax + tk * dim] + Chye * E[tj + time] * c;
     }
 }
 
 template <typename T>
 __global__ void GPU_updateEy_PlaneWaveY_Z(T *__restrict__ Ey, const T *__restrict__ H, const T c,
                                           const T *__restrict__ Ceyh, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t i0, const size_t i1,
-                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1)
+                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1, const size_t time)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x + i0;
     size_t tj = blockIdx.y * blockDim.y + threadIdx.y + j0;
@@ -399,15 +399,15 @@ __global__ void GPU_updateEy_PlaneWaveY_Z(T *__restrict__ Ey, const T *__restric
 
     if ((ti <= i1) && (tj <= j1 - 1))
     {
-        Ey[ti + tj * Imax + k0 * dim] = Ey[ti + tj * Imax + k0 * dim] - Ceyh[ti + tj * Imax + (k0 - 1) * dim] * H[tj] * c;
-        Ey[ti + tj * Imax + k1 * dim] = Ey[ti + tj * Imax + k1 * dim] + Ceyh[ti + tj * Imax + (k1)*dim] * H[tj] * c;
+        Ey[ti + tj * Imax + k0 * dim] = Ey[ti + tj * Imax + k0 * dim] - Ceyh[ti + tj * Imax + k0 * dim] * H[tj + time] * c;
+        Ey[ti + tj * Imax + k1 * dim] = Ey[ti + tj * Imax + k1 * dim] + Ceyh[ti + tj * Imax + k1 * dim] * H[tj + time] * c;
     }
 }
 
 template <typename T>
 __global__ void GPU_updateEz_PlaneWaveY_Z(T *__restrict__ Ez, const T *__restrict__ H, const T c,
                                           const T *__restrict__ Cezh, const size_t Imax, const size_t Jmax, const size_t Kmax, const size_t i0, const size_t i1,
-                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1)
+                                          const size_t j0, const size_t j1, const size_t k0, const size_t k1, const size_t time)
 {
     size_t ti = blockIdx.x * blockDim.x + threadIdx.x + i0;
     size_t tk = blockIdx.y * blockDim.y + threadIdx.y + k0;
@@ -415,8 +415,8 @@ __global__ void GPU_updateEz_PlaneWaveY_Z(T *__restrict__ Ez, const T *__restric
 
     if ((ti <= i1) && (tk <= k1 - 1))
     {
-        Ez[ti + j0 * Imax + tk * dim] = Ez[ti + j0 * Imax + tk * dim] + Cezh[ti + (j0 - 1) * Imax + tk * dim] * H[j0 - 1] * c;
-        Ez[ti + j1 * Imax + tk * dim] = Ez[ti + j1 * Imax + tk * dim] - Cezh[ti + j1 * Imax + tk * dim] * H[j1] * c;
+        Ez[ti + j0 * Imax + tk * dim] = Ez[ti + j0 * Imax + tk * dim] + Cezh[ti + j0 * Imax + tk * dim] * H[j0 - 1 + time] * c;
+        Ez[ti + j1 * Imax + tk * dim] = Ez[ti + j1 * Imax + tk * dim] - Cezh[ti + j1 * Imax + tk * dim] * H[j1 + time] * c;
     }
 }
 
@@ -487,8 +487,8 @@ __global__ void GPU_updateEy_PlaneWaveZ_Y(T *__restrict__ Ey, const T *__restric
 
     if ((ti <= i1) && (tj <= j1 - 1))
     {
-        Ey[ti + tj * Imax + k0 * dim] = Ey[ti + tj * Imax + k0 * dim] - Ceyh[ti + tj * Imax + (k0 - 1) * dim] * H[k0 - 1 + time] * c;
-        Ey[ti + tj * Imax + k1 * dim] = Ey[ti + tj * Imax + k1 * dim] + Ceyh[ti + tj * Imax + (k1 - 1) * dim] * H[k1 + time] * c;
+        Ey[ti + tj * Imax + k0 * dim] = Ey[ti + tj * Imax + k0 * dim] - Ceyh[ti + tj * Imax + k0 * dim] * H[k0 - 1 + time] * c;
+        Ey[ti + tj * Imax + k1 * dim] = Ey[ti + tj * Imax + k1 * dim] + Ceyh[ti + tj * Imax + k1 * dim] * H[k1 + time] * c;
     }
 }
 
@@ -503,8 +503,8 @@ __global__ void GPU_updateEz_PlaneWaveZ_Y(T *__restrict__ Ez, const T *__restric
 
     if ((ti <= i1) && (tk <= k1 - 1))
     {
-        Ez[ti + j0 * Imax + tk * dim] = Ez[ti + j0 * Imax + tk * dim] + Cezh[ti + (j0 - 1) * Imax + tk * dim] * H[tk + time] * c;
-        Ez[ti + (j1)*Imax + tk * dim] = Ez[ti + (j1)*Imax + tk * dim] - Cezh[ti + (j1)*Imax + tk * dim] * H[tk + time] * c;
+        Ez[ti + j0 * Imax + tk * dim] = Ez[ti + j0 * Imax + tk * dim] + Cezh[ti + j0 * Imax + tk * dim] * H[tk + time] * c;
+        Ez[ti + j1 * Imax + tk * dim] = Ez[ti + j1 * Imax + tk * dim] - Cezh[ti + j1 * Imax + tk * dim] * H[tk + time] * c;
     }
 }
 
@@ -551,8 +551,8 @@ __global__ void GPU_updateEx_PlaneWaveZ_X(T *__restrict__ Ex, const T *__restric
 
     if ((ti <= i1 - 1) && (tj <= j1))
     {
-        Ex[ti + tj * Imax + k0 * dim] = Ex[ti + tj * Imax + k0 * dim] + Cexh[ti + tj * Imax + (k0 - 1) * dim] * H[k0 - 1 + time] * c;
-        Ex[ti + tj * Imax + k1 * dim] = Ex[ti + tj * Imax + k1 * dim] - Cexh[ti + tj * Imax + (k1 - 1) * dim] * H[k1 + time] * c;
+        Ex[ti + tj * Imax + k0 * dim] = Ex[ti + tj * Imax + k0 * dim] + Cexh[ti + tj * Imax + k0 * dim] * H[k0 - 1 + time] * c;
+        Ex[ti + tj * Imax + k1 * dim] = Ex[ti + tj * Imax + k1 * dim] - Cexh[ti + tj * Imax + k1 * dim] * H[k1 + time] * c;
     }
 }
 
@@ -567,7 +567,7 @@ __global__ void GPU_updateEz_PlaneWaveZ_X(T *__restrict__ Ez, const T *__restric
 
     if ((tj <= j1) && (tk <= k1 - 1))
     {
-        Ez[i0 + tj * Imax + tk * dim] = Ez[i0 + tj * Imax + tk * dim] - Cezh[i0 - 1 + tj * Imax + tk * dim] * H[tk + time] * c;
+        Ez[i0 + tj * Imax + tk * dim] = Ez[i0 + tj * Imax + tk * dim] - Cezh[i0 + tj * Imax + tk * dim] * H[tk + time] * c;
         Ez[i1 + tj * Imax + tk * dim] = Ez[i1 + tj * Imax + tk * dim] + Cezh[i1 + tj * Imax + tk * dim] * H[tk + time] * c;
     }
 }
@@ -741,11 +741,12 @@ __global__ void GPU_updateE(T *__restrict__ Ex, T *__restrict__ Ey, T *__restric
     size_t idHz2 = ti - 1;
     size_t idHx3 = ti - Imax;
     size_t idHy3 = ti - 1;
-    T Hx_ti = Hx[ti];
-    T Hy_ti = Hy[ti];
-    T Hz_ti = Hz[ti];
+
     if ((idz < Kmax) && (idx < Imax) && (idy < Jmax) && (idx >= 0) && (idy >= 0) && (idz >= 0))
     {
+        T Hx_ti = Hx[ti];
+        T Hy_ti = Hy[ti];
+        T Hz_ti = Hz[ti];
         if (idy != 0 && idz != 0)
         {
             Ex[ti] = Cexe[ti] * Ex[ti] + Cexh[ti] * (+(Hz_ti - Hz[idHz1]) - (Hy_ti - Hy[idHy1]));

@@ -27,7 +27,7 @@ i0, i1, j0, k0 = 5, 20, 12, 12
 source = 100e3 * np.exp(-(((np.arange(timeSteps) - 30) / 10) ** 2))
 
 P = simFDTD("CreateSimulation")
-simFDTD("SetConst", P, np.single([0, delX, delT]), np.int32([timeSteps, Nx - 20, Ny - 20, Nz - 20, 0]))
+simFDTD("SetConst", P, np.single([0, delX, delT]), np.int32([timeSteps, Nx, Ny, Nz, 0]))
 simFDTD("SetSource", P, np.single(source))
 for flag, values in [(1, sigma), (2, sigma), (3, sigma), (4, eps), (5, eps), (6, eps)]:
     simFDTD("UpdateMaterial", P, np.int32(flag), np.single(values.flatten(order="F")))

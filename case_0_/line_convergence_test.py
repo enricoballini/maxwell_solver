@@ -57,7 +57,7 @@ def line_Ex_at_samples(refinement, frequency_shift_maximum):
         "SetConst",
         simulation,
         np.single([0, size, step_size]),
-        np.int32([refinement * time_steps, *(refined_nodes - 2 * refinement * layer_cells), 0]),
+        np.int32([refinement * time_steps, *refined_nodes, 0]),
     )
     simFDTD(
         "SetSource",
