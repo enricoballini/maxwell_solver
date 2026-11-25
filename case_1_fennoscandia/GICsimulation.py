@@ -51,7 +51,7 @@ def TypeReal(x):
 
 reset_gpuDevice()
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-# No plots here (the cluster has no graphics): the output goes to results/ (made by run.sh)
+# No plots here (the cluster has no graphics): the data go to results/ (made by run.sh), GICpostprocess.py turns them into ParaView files
 
 ###optimization parameters initialization
 clight = 299792458
@@ -122,6 +122,15 @@ sigma_sy[:, :, :ground_layers] = ground_conductivity
 sigma_sz[:, :, :ground_layers] = ground_conductivity
 sigma_sx[:, :, ground_layers] = ground_conductivity[:, :, -1] / 2
 sigma_sy[:, :, ground_layers] = ground_conductivity[:, :, -1] / 2
+current_indices = [1, 249, 139, 139, 26, 26]
+np.savez(
+    "results/setup.npz",
+    delX=delX,
+    delT=delT,
+    pml_size=pml_size,
+    surface_index=ground_layers,
+    current_indices=current_indices,
+)
 # FDTD
 P = simFDTD("CreateSimulation")
 simFDTD("SetConst", P, TypeReal(freqRes), TypeInt(TimeDim))
@@ -148,16 +157,23 @@ for i in range(0, timeSteps):
     simFDTD("UpdateH_PML", P)
     simFDTD("UpdateE_All", P)
     simFDTD("UpdateE_PML", P)
-    simFDTD("AddCurrents", P, TypeInt([i, 1]), TypeInt([1, 249, 139, 139, 26, 26]))
+    simFDTD("AddCurrents", P, TypeInt([i, 1]), TypeInt(current_indices))
 
     if np.mod(i, 1000) == 0:
         print(f"step {i}/{timeSteps}, elapsed {time.time() - tic:.1f} s", flush=True)
+    if np.mod(i, 10000) == 0:
         shape = [extend_dimX, extend_dimY, extend_dimZ]
         n_cells = np.uint32(extend_dimX * extend_dimY * extend_dimZ)
-        Ex = np.reshape(simFDTD("OutputVis", P, n_cells, np.int32(1)), shape, order="F")
-        Ey = np.reshape(simFDTD("OutputVis", P, n_cells, np.int32(2)), shape, order="F")
+        physical_domain = tuple(slice(pml_size, pml_size + n) for n in constSim.Dim)
         np.savez(
-            f"results/fields_{i:06d}.npz", step=i, Ex=Ex[:, :, 16], Ey=Ey[:, :, 16]
+            f"results/fields_{i:06d}.npz",
+            step=i,
+            **{
+                name: np.reshape(
+                    simFDTD("OutputVis", P, n_cells, np.int32(flag)), shape, order="F"
+                )[physical_domain]
+                for flag, name in enumerate(["Ex", "Ey", "Ez", "Hx", "Hy", "Hz"], start=1)
+            },
         )
 
 
