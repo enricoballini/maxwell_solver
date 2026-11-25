@@ -22,7 +22,8 @@ from vtkmodules.util.numpy_support import vtk_to_numpy
 
 # Run with ParaView's pvbatch after GICpostprocess.py: writes results/paraview/fields.pvsm, the one file to open (File > Load State).
 # Every file of results/paraview/ is a separate source, at the last time step. E and B: outline of the volume, white arrows (direction only,
-# fixed length) at about 1000 points spread in the volume, and a slice (E at the ground, B across the line), log colour scale from 1% to 99%.
+# fixed length) at about 1000 points spread in the volume, and a horizontal slice on the first node plane with z >= 0 (E at z = 0, B at z = 5 km), log colour scale from 1% to 99% of the nonzero values.
+# Axes with ticks in km (z = 0 at the ground).
 # The grids are loaded but hidden.
 
 case_folder = os.path.dirname(os.path.abspath(__file__))
@@ -51,21 +52,22 @@ displays = {name: Show(source, view) for name, source in sources.items()}
 for name in ["primal_grid", "dual_grid"]:
     Hide(sources[name], view)
 
-for name, unit, plane_normal in [("E", "V/km", [0, 0, 1]), ("B", "nT", [1, 0, 0])]:
+for name, unit in [("E", "V/km"), ("B", "nT")]:
     sources[name].UpdatePipeline(last_time)
     data = servermanager.Fetch(sources[name])
     magnitude = np.linalg.norm(vtk_to_numpy(data.GetPointData().GetArray(name)), axis=1)
     bounds = data.GetBounds()
     plane = Slice(registrationName=f"{name}_slice", Input=sources[name])
-    plane.SliceType.Origin = [(bounds[0] + bounds[1]) / 2, (bounds[2] + bounds[3]) / 2, 0]
-    plane.SliceType.Normal = plane_normal
+    first_node_in_air = data.GetOrigin()[2] + np.ceil(-data.GetOrigin()[2] / data.GetSpacing()[2]) * data.GetSpacing()[2]
+    plane.SliceType.Origin = [(bounds[0] + bounds[1]) / 2, (bounds[2] + bounds[3]) / 2, first_node_in_air]
+    plane.SliceType.Normal = [0, 0, 1]
     plane_display = Show(plane, view)
     ColorBy(plane_display, ("POINTS", name, "Magnitude"))
     plane_display.SetScalarBarVisibility(view, True)
     color_map = GetColorTransferFunction(name)
     color_map.ApplyPreset("Viridis", True)
     color_map.AutomaticRescaleRangeMode = "Never"
-    color_map.RescaleTransferFunction(*np.percentile(magnitude, [1, 99]))
+    color_map.RescaleTransferFunction(*np.percentile(magnitude[magnitude > 0], [1, 99]))
     color_map.MapControlPointsToLogSpace()
     color_map.UseLogScale = 1
     GetScalarBar(color_map, view).Title = f"|{name}| ({unit})"
@@ -89,6 +91,11 @@ displays["line_current"].LineWidth = 3
 displays["line_current"].SetScalarBarVisibility(view, True)
 GetScalarBar(current_map, view).Title = "current (A)"
 
+view.AxesGrid.Visibility = 1
+view.AxesGrid.XTitle, view.AxesGrid.YTitle, view.AxesGrid.ZTitle = "x (km)", "y (km)", "z (km)"
+for axis in "XYZ":
+    setattr(view.AxesGrid, f"{axis}TitleFontSize", 16)
+    setattr(view.AxesGrid, f"{axis}LabelFontSize", 14)
 Render(view)
 bounds = sources["pml_outer_box"].GetDataInformation().GetBounds()
 view.CameraFocalPoint = [(bounds[0] + bounds[1]) / 2, (bounds[2] + bounds[3]) / 2, 0]
