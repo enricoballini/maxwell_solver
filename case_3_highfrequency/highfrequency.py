@@ -1,14 +1,26 @@
 import math
 import os
+import shutil
 import sys
 from types import SimpleNamespace
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.animation import FuncAnimation, PillowWriter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from CreateSource import CreateSource  # noqa: E402
 from src.simFDTD import simFDTD, reset_gpuDevice  # noqa: E402
+
+matplotlib.use("Agg")
+plt.rcParams.update(
+    {
+        "text.usetex": shutil.which("latex") is not None,  # the HPsp container has no LaTeX
+        "font.family": "serif",
+        "mathtext.fontset": "cm",
+    }
+)
 
 # Python translation of highfrequency.m. Indices are 0-based: MATLAB index k -> k-1, range a:b -> a-1:b.
 # The local functions at the end of highfrequency.m are here at the top, because Python needs them
@@ -51,6 +63,7 @@ def TypeReal(x):
 
 reset_gpuDevice()
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.makedirs("results/figures", exist_ok=True)
 # clear
 plt.close('all')
 
@@ -78,6 +91,8 @@ fmaxx,constSim.source=CreateSource(constSim)
 plt.figure()
 plt.plot(constSim.source, linewidth=2)
 plt.grid(True)
+plt.savefig("results/figures/source.pdf")
+plt.close()
 
 
 
@@ -133,6 +148,9 @@ simFDTD('Init1D',P,TypeReal(1),TypeReal(constSim.source))
 simFDTD('UpdateCuda',P)
 
 simFDTD('ResetFieldAll',P)
+slice_index_y=119
+saved_steps=[]
+saved_Ez_slices=[]
 for i in range(0,timeSteps):
     simFDTD('UpdateH_All',P)
     simFDTD('UpdateH_PlaneWave',P,TypeInt([i,3]))
@@ -162,15 +180,8 @@ for i in range(0,timeSteps):
 
         aa=simFDTD('OutputVis',P,np.uint32(extend_dimX*extend_dimY*extend_dimZ),np.int32(3))
         bb=(np.reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ],order='F'))
-        plt.clf()  # MATLAB's imagesc/colorbar replace the previous ones; matplotlib would stack them
-        #plt.subplot(2,2,3)
-        plt.imshow(np.squeeze(np.abs(bb[:,119,:])).T,aspect='auto')
-        plt.colorbar()
-        plt.gca().invert_yaxis()
-        plt.gca().set_box_aspect(1)
-        plt.title("Ez--Xsilce"+str(i))
-
-        plt.draw();plt.pause(0.1)
+        saved_steps.append(i)
+        saved_Ez_slices.append(np.abs(bb[:,slice_index_y,:]).T)
 
 
 
@@ -179,4 +190,25 @@ simFDTD('DeleteSimulation',P)
 
 reset_gpuDevice()
 
-plt.show()  # MATLAB keeps the figures open after the script ends
+Ez_maximum = max(Ez_slice.max() for Ez_slice in saved_Ez_slices)
+figure, axes = plt.subplots(layout="constrained")
+image = axes.imshow(
+    saved_Ez_slices[0],
+    aspect="auto",
+    cmap=plt.get_cmap("viridis", 10),
+    vmin=0,
+    vmax=Ez_maximum,
+)
+figure.colorbar(image, ax=axes, ticks=np.linspace(0, Ez_maximum, 11), label=r"$|E_z|$")
+axes.invert_yaxis()
+axes.set_box_aspect(1)
+
+
+def draw_frame(frame):
+    image.set_data(saved_Ez_slices[frame])
+    axes.set_title(rf"$j = {slice_index_y}$, step ${saved_steps[frame]}$")
+
+
+FuncAnimation(figure, draw_frame, frames=len(saved_steps)).save(
+    "results/figures/Ez.gif", writer=PillowWriter(fps=10)
+)

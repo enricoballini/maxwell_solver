@@ -3,7 +3,7 @@
 # numpy >= 2 is needed for the float32 arithmetic in CreateSource.py (NEP 50 promotion rules).
 numpy>=2.0
 matplotlib>=3.3
-# HDF5 reader for the ground model case_1_fennoscandia/250x280gem.h5.
+# HDF5 reader for the ground model case_1_fennoscandia/data/250x280gem.h5.
 h5py>=3.0
 # Qt backend, so matplotlib can open plot windows also when Python has no tkinter.
 PyQt6
