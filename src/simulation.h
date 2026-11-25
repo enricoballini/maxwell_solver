@@ -27,7 +27,9 @@ public:
   ///////set coaxial paramters
   void createMu(real *mu_x, real *mu_y, real *mu_z)
   {
-    init_mu = 1;
+    if (init_readysimulation != 1)
+
+      init_mu = 1;
     real *Cx;
     real *Cy;
     real *Cz;
@@ -59,7 +61,7 @@ public:
     }
     cudaMemcpyAsync(Chze_GPU, Cz, IJK_Size * real_size, cudaMemcpyHostToDevice,
                     stream);
-
+    cudaStreamSynchronize(stream);
     cudaFreeHost(Cx);
     cudaFreeHost(Cy);
     cudaFreeHost(Cz);
@@ -76,6 +78,8 @@ public:
   ////////////////////set constant parameters
   void setConst(real *freqRes, int *TimeDim)
   {
+    if (init_const)
+      mexErrMsgIdAndTxt("simFDTD:AlreadyInitialized", "SetConst: already called.");
     fctr = freqRes[0];
     delX = freqRes[1];
     delT = freqRes[2];
@@ -85,15 +89,12 @@ public:
     alpha_max = 0.08;
     kappa_max = 1.0;
     max_TimeSteps = TimeDim[0];
-    I_size = TimeDim[1];
-    J_size = TimeDim[2];
-    K_size = TimeDim[3];
+    Imax = TimeDim[1];
+    Jmax = TimeDim[2];
+    Kmax = TimeDim[3];
     numAnt = TimeDim[4];
     /////////////////////////////////////////////
     // PML thickness in each direction
-    Imax = I_size + 2 * pml_size;
-    Jmax = J_size + 2 * pml_size;
-    Kmax = K_size + 2 * pml_size;
     IJ_Size = Imax * Jmax;
     IJK_Size = Imax * Jmax * Kmax;
     NumBlocks = (IJK_Size + NumThreads - 1) / NumThreads;
@@ -442,27 +443,27 @@ public:
         Hy_GPU, Ez_1D_GPU, c, Chye, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1,
         time);
   }
-  void updateH_PW_YX(real *Ez_1D_GPU, real c)
+  void updateH_PW_YX(real *Ez_1D_GPU, real c, size_t time)
   {
     dim3 dimBlock(block_size, block_size);
     dim3 dimGrid_Hy_PWY_X((Imax / block_size) + 1, (Jmax / block_size) + 1);
     GPU_updateHy_PlaneWaveY_X<<<dimGrid_Hy_PWY_X, dimBlock, 0, stream>>>(
-        Hy_GPU, Ez_1D_GPU, c, Chye, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1);
+        Hy_GPU, Ez_1D_GPU, c, Chye, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1, time);
 
     dim3 dimGrid_Hz_PWY_X((Imax / block_size) + 1, (Kmax / block_size) + 1);
     GPU_updateHz_PlaneWaveY_X<<<dimGrid_Hz_PWY_X, dimBlock, 0, stream>>>(
-        Hz_GPU, Ez_1D_GPU, c, Chze, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1);
+        Hz_GPU, Ez_1D_GPU, c, Chze, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1, time);
   }
-  void updateH_PW_YZ(real *Ez_1D_GPU, real c)
+  void updateH_PW_YZ(real *Ez_1D_GPU, real c, size_t time)
   {
     dim3 dimBlock(block_size, block_size);
     dim3 dimGrid_HxPWY_Z((Imax / block_size) + 1, (Kmax / block_size) + 1);
     GPU_updateHx_PlaneWaveY_Z<<<dimGrid_HxPWY_Z, dimBlock, 0, stream>>>(
-        Hx_GPU, Ez_1D_GPU, c, Chxe, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1);
+        Hx_GPU, Ez_1D_GPU, c, Chxe, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1, time);
 
     dim3 dimGrid_HyPWY_Z((Jmax / block_size) + 1, (Kmax / block_size) + 1);
     GPU_updateHy_PlaneWaveY_Z<<<dimGrid_HyPWY_Z, dimBlock, 0, stream>>>(
-        Hy_GPU, Ez_1D_GPU, c, Chye, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1);
+        Hy_GPU, Ez_1D_GPU, c, Chye, Imax, Jmax, Kmax, i0, i1, j0, j1, k0, k1, time);
   }
   void updateH_PW_ZX(real *Ez_1D_GPU, real c, size_t time)
   {
@@ -515,31 +516,31 @@ public:
         Ez_GPU, Hy_1D_GPU, c, Cezh_GPU, Imax, Jmax, Kmax, i0, i1, j0, j1, k0,
         k1, time);
   }
-  void updateE_PW_YX(real *Hy_1D_GPU, real c)
+  void updateE_PW_YX(real *Hy_1D_GPU, real c, size_t time)
   {
     dim3 dimBlock(block_size, block_size);
     dim3 dimGrid_ExPWY_X((Imax / block_size) + 1, (Kmax / block_size) + 1);
     GPU_updateEx_PlaneWaveY_X<<<dimGrid_ExPWY_X, dimBlock, 0, stream>>>(
         Ex_GPU, Hy_1D_GPU, c, Cexh_GPU, Imax, Jmax, Kmax, i0, i1, j0, j1, k0,
-        k1);
+        k1, time);
 
     dim3 dimGrid_EyPWY_X((Jmax / block_size) + 1, (Kmax / block_size) + 1);
     GPU_updateEy_PlaneWaveY_X<<<dimGrid_EyPWY_X, dimBlock, 0, stream>>>(
         Ey_GPU, Hy_1D_GPU, c, Ceyh_GPU, Imax, Jmax, Kmax, i0, i1, j0, j1, k0,
-        k1);
+        k1, time);
   }
-  void updateE_PW_YZ(real *Hy_1D_GPU, real c)
+  void updateE_PW_YZ(real *Hy_1D_GPU, real c, size_t time)
   {
     dim3 dimBlock(block_size, block_size);
     dim3 dimGrid_EyPWY_Z((Imax / block_size) + 1, (Jmax / block_size) + 1);
     GPU_updateEy_PlaneWaveY_Z<<<dimGrid_EyPWY_Z, dimBlock, 0, stream>>>(
         Ey_GPU, Hy_1D_GPU, -c, Ceyh_GPU, Imax, Jmax, Kmax, i0, i1, j0, j1, k0,
-        k1);
+        k1, time);
 
     dim3 dimGrid_EzPWY_Z((Imax / block_size) + 1, (Kmax / block_size) + 1);
     GPU_updateEz_PlaneWaveY_Z<<<dimGrid_EzPWY_Z, dimBlock, 0, stream>>>(
         Ez_GPU, Hy_1D_GPU, -c, Cezh_GPU, Imax, Jmax, Kmax, i0, i1, j0, j1, k0,
-        k1);
+        k1, time);
   }
   void updateE_PW_ZX(real *Hy_1D_GPU, real c, size_t time)
   {
@@ -1229,10 +1230,10 @@ public:
       cudaFree(b_Ex_GPU);
       cudaFree(c_Ex_GPU);
 
-      cudaFree(b_Hx_1);
-      cudaFree(b_Hx_2);
-      cudaFree(c_Hx_1);
-      cudaFree(c_Hx_2);
+      cudaFreeHost(b_Hx_1);
+      cudaFreeHost(b_Hx_2);
+      cudaFreeHost(c_Hx_1);
+      cudaFreeHost(c_Hx_2);
 
       cudaFree(b_Hx_GPU);
       cudaFree(c_Hx_GPU);
@@ -1244,14 +1245,14 @@ public:
       // Non-Uniform Mesh
       if (FDTD_UNIFORM_MESH != 1)
       {
-        cudaFree(den_ey);
-        cudaFree(den_ez);
-        cudaFree(den_hy);
-        cudaFree(den_hz);
+        cudaFreeHost(den_ey);
+        cudaFreeHost(den_ez);
+        cudaFreeHost(den_hy);
+        cudaFreeHost(den_hz);
       }
       if (init_antenna == 1)
       {
-        cudaFree(PortSignal);
+        cudaFreeHost(PortSignal);
         cudaFree(PortSignal_GPU);
       }
     }
@@ -1357,9 +1358,6 @@ private:
   /// TimeDim
   size_t numAnt;
   size_t max_TimeSteps;
-  size_t I_size;
-  size_t J_size;
-  size_t K_size;
   real poly_m; // polynomial order for pml grading
   size_t IJK_Size;
   /// CPML_param

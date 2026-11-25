@@ -45,12 +45,13 @@ flag_plot=1;
 %--------------------project_FDTD_3D-----------------------
 pml_size=10;
 freqRes = [constSim.fctr delX delT];
-TimeDim = [timeSteps constSim.Dim(1) constSim.Dim(2) constSim.Dim(3) numAnts];
-
-% % % %  Extend Dielectric profile for the CPML boundary condition
 extend_dimX = constSim.Dim(1)+2*pml_size;
 extend_dimY = constSim.Dim(2)+2*pml_size;
 extend_dimZ = constSim.Dim(3)+2*pml_size;
+TimeDim = [timeSteps extend_dimX extend_dimY extend_dimZ numAnts];
+
+% % % %  Extend Dielectric profile for the CPML boundary condition
+
 SimOri=round([extend_dimX/2,extend_dimY/2,extend_dimZ/2]);
 eps_infx = ones(extend_dimX,extend_dimY,extend_dimZ);
 sigma_sx = 0.0000*ones(extend_dimX,extend_dimY,extend_dimZ);
@@ -72,7 +73,6 @@ simFDTD('UpdateMaterial',P,TypeInt(5),TypeReal(eps_infy(:)));
 simFDTD('UpdateMaterial',P,TypeInt(6),TypeReal(eps_infz(:)));
 
 simFDTD('ReadySimulation',P);
-simFDTD('InitField',P);
 antdatasize=numAnts*timeSteps;
 
 simFDTD('Init1D',P,TypeReal(1),TypeReal(constSim.source));
@@ -84,12 +84,12 @@ simFDTD('UpdateCuda',P);
 simFDTD('ResetFieldAll',P);
 for i=0:timeSteps-1
     simFDTD('UpdateH_All',P);
-    %simFDTD('UpdateH_PlaneWave',P,TypeInt([i,3]));
+    simFDTD('UpdateH_PlaneWave',P,TypeInt([i,3]));
     simFDTD('UpdateH_PML',P);
     simFDTD('UpdateE_All',P);
-    %simFDTD('UpdateE_PlaneWave',P,TypeInt([i,3]));
+    simFDTD('UpdateE_PlaneWave',P,TypeInt([i,3]));
     simFDTD('UpdateE_PML',P);
-    simFDTD('AddCurrents',P,TypeInt([i,3]),TypeInt([11,239,139,139,26,26]));
+    % simFDTD('AddCurrents',P,TypeInt([i,1]),TypeInt([120,145,139,139,26,26]));
 
     if(mod(i,10)==0)
         % aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(2));
@@ -109,10 +109,10 @@ for i=0:timeSteps-1
         % axis square
         % title("Ey--Xsilce"+num2str(i))
 
-        aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(1));
+        aa=simFDTD('OutputVis',P,uint32(extend_dimX*extend_dimY*extend_dimZ),int32(3));
         bb=(reshape(aa,[extend_dimX ,extend_dimY,extend_dimZ]));
         %subplot(2,2,3)
-        imagesc(squeeze(abs(bb(:,:,17)))')
+        imagesc(squeeze(abs(bb(:,120,:)))')
         colorbar
         axis xy
         axis square
