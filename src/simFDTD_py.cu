@@ -20,6 +20,7 @@ extern "C"
     void simFDTD_updatee_planewave(void *sim, int *time) { ((simulation *)sim)->updateE_PlaneWave(time); }
     void simFDTD_updateh_planewave(void *sim, int *time) { ((simulation *)sim)->updateH_PlaneWave(time); }
     void simFDTD_setpml(void *sim, int *cellsAndFirstXIndex, float *alphaMax) { ((simulation *)sim)->setPML(cellsAndFirstXIndex, alphaMax); }
+    void simFDTD_setpeconallfaces(void *sim) { ((simulation *)sim)->setPECOnAllFaces(); }
     void simFDTD_setconst(void *sim, float *TopfreqRes, int *TopTimeDim) { ((simulation *)sim)->setConst(TopfreqRes, TopTimeDim); }
     void simFDTD_setsource(void *sim, float *SourceIn) { ((simulation *)sim)->setSource(SourceIn); }
     void simFDTD_updatesource(void *sim, float *SourceIn) { ((simulation *)sim)->updateSource(SourceIn); }

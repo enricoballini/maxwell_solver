@@ -80,6 +80,7 @@ public:
     pml_size = 10;
     alpha_max = 0.08;
     first_x_index_of_Ex_pml_memory = 1;
+    pec_on_all_faces = false;
     cudaStreamCreate(&stream);
   }
   ////////////////////PML cells, first x index of the Ex memory in the y- and z-layers, alpha_max; before setConst
@@ -88,6 +89,22 @@ public:
     pml_size = cellsAndFirstXIndex[0];
     first_x_index_of_Ex_pml_memory = cellsAndFirstXIndex[1];
     alpha_max = alphaMax[0];
+  }
+  ////////////////////PEC also on the faces j = Jmax-1 and k = Kmax-1 (default: B = 0 there); before readySimulation
+  void setPECOnAllFaces()
+  {
+    pec_on_all_faces = true;
+  }
+  ////////////////////E on the planes j = Jmax-1 and k = Kmax-1 never updated, so held at 0 (as den_ex = 0 on i = Imax-1)
+  void zeroCurlCoefficientsOnPECFaces()
+  {
+    if (!pec_on_all_faces)
+      return;
+    for (size_t k = 0; k < Kmax; k++)
+      for (size_t j = 0; j < Jmax; j++)
+        for (size_t i = 0; i < Imax; i++)
+          if (j == Jmax - 1 || k == Kmax - 1)
+            Cexh[i + j * Imax + k * Imax * Jmax] = Ceyh[i + j * Imax + k * Imax * Jmax] = Cezh[i + j * Imax + k * Imax * Jmax] = 0;
   }
   ////////////////////set constant parameters
   void setConst(real *freqRes, int *TimeDim)
@@ -968,6 +985,7 @@ public:
       Cezh[i] =
           2 * delT / (2 * eps0 * eps_infz[i] + sigma_sz[i] * delT) * den_ex[i];
     }
+    zeroCurlCoefficientsOnPECFaces();
 
     cudaMemcpyAsync(Cexe_GPU, Cexe, (IJK_Size)*real_size,
                     cudaMemcpyHostToDevice, stream);
@@ -1143,6 +1161,7 @@ public:
       Cezh[i] =
           2 * delT / (2 * eps0 * eps_infz[i] + sigma_sz[i] * delT) * den_ex[i];
     }
+    zeroCurlCoefficientsOnPECFaces();
 
     cudaMemcpyAsync(Cexe_GPU, Cexe, (IJK_Size)*real_size,
                     cudaMemcpyHostToDevice, stream);
@@ -1399,6 +1418,7 @@ private:
   real kappa_max;
   size_t pml_size;
   size_t first_x_index_of_Ex_pml_memory;
+  bool pec_on_all_faces;
 
   size_t Imax;
   size_t Jmax;

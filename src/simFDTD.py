@@ -28,6 +28,7 @@ for _name, _nptr in [
     ("updatee_planewave", 2),
     ("updateh_planewave", 2),
     ("setpml", 3),
+    ("setpeconallfaces", 1),
     ("setconst", 3),
     ("setsource", 2),
     ("updatesource", 2),
@@ -124,6 +125,8 @@ def simFDTD(*prhs):
         cellsAndFirstXIndex = _data(prhs[2])
         alphaMax = _data(prhs[3])
         _lib.simFDTD_setpml(sim, cellsAndFirstXIndex.ctypes.data, alphaMax.ctypes.data)
+    elif op == "setpeconallfaces":
+        _lib.simFDTD_setpeconallfaces(sim)
     elif op == "setconst":
         if nrhs < 4:
             _mexErrMsgIdAndTxt("simFDTD:InvalidInput", "freqRes and TimeDim required.")

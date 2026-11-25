@@ -108,6 +108,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
             float *alphaMax = (float *)mxGetPr(prhs[3]);
             sim->setPML(cellsAndFirstXIndex, alphaMax);
         }
+        else if (strcmp(op, "setpeconallfaces") == 0)
+        {
+            sim->setPECOnAllFaces();
+        }
         else if (strcmp(op, "setconst") == 0)
         {
             if (nrhs < 4)
