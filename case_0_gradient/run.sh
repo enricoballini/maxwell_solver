@@ -6,4 +6,3 @@ if [ -f "$HOME/Desktop/work/venv/bin/activate" ]; then source "$HOME/Desktop/wor
 mkdir -p results
 (cd ../src && python Compile.py)
 python -u GICsimulation.py 2>&1 | tee results/log.txt
-python -u line_convergence_test.py 2>&1 | tee results/line_convergence_log.txt
