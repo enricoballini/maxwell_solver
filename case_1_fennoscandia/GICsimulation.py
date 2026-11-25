@@ -164,14 +164,13 @@ for i in range(0, timeSteps):
     if np.mod(i, 10000) == 0:
         shape = [extend_dimX, extend_dimY, extend_dimZ]
         n_cells = np.uint32(extend_dimX * extend_dimY * extend_dimZ)
-        physical_domain = tuple(slice(pml_size, pml_size + n) for n in constSim.Dim)
         np.savez(
             f"results/fields_{i:06d}.npz",
             step=i,
             **{
                 name: np.reshape(
                     simFDTD("OutputVis", P, n_cells, np.int32(flag)), shape, order="F"
-                )[physical_domain]
+                )
                 for flag, name in enumerate(["Ex", "Ey", "Ez", "Hx", "Hy", "Hz"], start=1)
             },
         )
