@@ -9,3 +9,7 @@ h5py>=3.0
 PyQt6
 # CUDA compiler (nvcc) for src/Compile.py, used when no nvcc is on PATH. CUDA 13 needs NVIDIA driver >= 580.
 cuda-toolkit[nvcc,cudart]==13.2.*
+# case_5_fennoscandia_pml_pec_gprmax runs gprMax, which this venv does not get (commented out): locally it is in
+# ../gprMax/.venv, on HPsp in hpc/container_gprmax.def (Python 3.13, gprMax does not support 3.14). Both build from source.
+# gprMax @ git+https://github.com/gprMax/gprMax.git@809529fae8975cfac8cfae8b3cb3d5140a69904c
+# pycuda==2026.1
